@@ -94,8 +94,8 @@ capabilities probe() {
 	                      term_prog == "ghostty" || term_prog == "WezTerm";
 
 	caps.italics = term != "linux" && term != "dumb" && !term.empty();
-	caps.osc52 = caps.italics;                 // same class of terminal
-	caps.synchronized_output = caps.italics;   // unsupported terminals ignore the escape
+	caps.osc52 = caps.italics;                // same class of terminal
+	caps.synchronized_output = caps.italics;  // unsupported terminals ignore the escape
 
 	// device attributes: sixel support shows as attribute 4 in the DA1 reply.
 	if (const std::string da1 = query("\x1b[c", 'c', 120); !da1.empty()) {
@@ -127,9 +127,15 @@ std::string osc8_link(std::string_view url, std::string_view text) {
 	return out;
 }
 
-std::string sync_begin() { return "\x1b[?2026h"; }
-std::string sync_end() { return "\x1b[?2026l"; }
-std::string bell() { return "\a"; }
+std::string sync_begin() {
+	return "\x1b[?2026h";
+}
+std::string sync_end() {
+	return "\x1b[?2026l";
+}
+std::string bell() {
+	return "\a";
+}
 
 std::string osc9_notify(std::string_view text) {
 	std::string out = "\x1b]9;";

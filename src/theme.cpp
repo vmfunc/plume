@@ -9,7 +9,9 @@ namespace plume {
 namespace {
 
 // the palettes are known-good hex; parse_hex never fails on them.
-rgb H(std::string_view hex) { return parse_hex(hex).value(); }
+rgb H(std::string_view hex) {
+	return parse_hex(hex).value();
+}
 
 }  // namespace
 

@@ -50,7 +50,9 @@ class stmt {
 		return *this;
 	}
 
-	int prepare(sqlite3* db, const char* sql) { return sqlite3_prepare_v2(db, sql, -1, &s_, nullptr); }
+	int prepare(sqlite3* db, const char* sql) {
+		return sqlite3_prepare_v2(db, sql, -1, &s_, nullptr);
+	}
 	sqlite3_stmt* raw() const { return s_; }
 
 	void text(int i, std::string_view v) {
@@ -84,8 +86,10 @@ std::string index_text(const std::string& content_json) {
 	if (!blocks) return content_json;  // best effort if the column isn't block json
 	std::string out;
 	for (const auto& b : *blocks) {
-		if (const auto* t = std::get_if<text_block>(&b)) out += t->text + '\n';
-		else if (const auto* th = std::get_if<thinking_block>(&b)) out += th->thinking + '\n';
+		if (const auto* t = std::get_if<text_block>(&b))
+			out += t->text + '\n';
+		else if (const auto* th = std::get_if<thinking_block>(&b))
+			out += th->thinking + '\n';
 	}
 	return out;
 }
@@ -115,10 +119,11 @@ constexpr const char* kNodeCols =
 
 result<store> store::open(const std::string& path) {
 	sqlite3* raw = nullptr;
-	const int rc = sqlite3_open_v2(path.c_str(), &raw,
-	                               SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+	const int rc =
+	    sqlite3_open_v2(path.c_str(), &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
 	std::unique_ptr<sqlite3, closer> db(raw);
-	if (rc != SQLITE_OK) return fail(errc::sqlite, raw ? sqlite3_errmsg(raw) : "cannot open database");
+	if (rc != SQLITE_OK)
+		return fail(errc::sqlite, raw ? sqlite3_errmsg(raw) : "cannot open database");
 
 	static constexpr const char* schema = R"sql(
 PRAGMA journal_mode = WAL;
@@ -173,7 +178,10 @@ result<void> store::put_conversation(const conversation& c) {
 	q.text(3, c.project);
 	q.text(4, c.source);
 	q.integer(5, c.created_at);
-	if (c.active_leaf) q.text(6, c.active_leaf->str()); else q.null(6);
+	if (c.active_leaf)
+		q.text(6, c.active_leaf->str());
+	else
+		q.null(6);
 	if (q.step() != SQLITE_DONE) return std::unexpected(sqlite_err(db_.get(), "put_conversation"));
 	return {};
 }
@@ -181,8 +189,8 @@ result<void> store::put_conversation(const conversation& c) {
 result<conversation> store::conversation_of(const convo_id& id) {
 	stmt q;
 	if (q.prepare(db_.get(),
-	              "SELECT id,title,project,source,created_at,active_leaf FROM conversations WHERE id=?1") !=
-	    SQLITE_OK)
+	              "SELECT id,title,project,source,created_at,active_leaf FROM conversations WHERE "
+	              "id=?1") != SQLITE_OK)
 		return std::unexpected(sqlite_err(db_.get(), "conversation_of"));
 	q.text(1, id.str());
 	const int rc = q.step();
@@ -253,15 +261,19 @@ result<void> store::delete_conversation(const convo_id& id) {
 
 result<void> store::put_node(const node& n) {
 	stmt q;
-	if (q.prepare(db_.get(),
-	              "INSERT INTO nodes(id,convo_id,parent_id,role,content,model,params,tokens_in,"
-	              "tokens_out,cost,state,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) "
-	              "ON CONFLICT(id) DO UPDATE SET content=?5, model=?6, params=?7, tokens_in=?8, "
-	              "tokens_out=?9, cost=?10, state=?11") != SQLITE_OK)
+	if (q.prepare(
+	        db_.get(),
+	        "INSERT INTO nodes(id,convo_id,parent_id,role,content,model,params,tokens_in,"
+	        "tokens_out,cost,state,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12) "
+	        "ON CONFLICT(id) DO UPDATE SET content=?5, model=?6, params=?7, tokens_in=?8, "
+	        "tokens_out=?9, cost=?10, state=?11") != SQLITE_OK)
 		return std::unexpected(sqlite_err(db_.get(), "put_node"));
 	q.text(1, n.id.str());
 	q.text(2, n.convo.str());
-	if (n.parent) q.text(3, n.parent->str()); else q.null(3);
+	if (n.parent)
+		q.text(3, n.parent->str());
+	else
+		q.null(3);
 	q.text(4, to_string(n.role));
 	q.text(5, n.content_json);
 	q.text(6, n.model);
@@ -296,7 +308,8 @@ result<void> store::put_node(const node& n) {
 
 result<node> store::node_of(const node_id& id) {
 	stmt q;
-	if (q.prepare(db_.get(), (std::string("SELECT ") + kNodeCols + " FROM nodes WHERE id=?1").c_str()) !=
+	if (q.prepare(db_.get(),
+	              (std::string("SELECT ") + kNodeCols + " FROM nodes WHERE id=?1").c_str()) !=
 	    SQLITE_OK)
 		return std::unexpected(sqlite_err(db_.get(), "node_of"));
 	q.text(1, id.str());
@@ -345,7 +358,10 @@ result<void> store::set_parent(const node_id& id, const std::optional<node_id>& 
 	if (q.prepare(db_.get(), "UPDATE nodes SET parent_id=?2 WHERE id=?1") != SQLITE_OK)
 		return std::unexpected(sqlite_err(db_.get(), "set_parent"));
 	q.text(1, id.str());
-	if (parent) q.text(2, parent->str()); else q.null(2);
+	if (parent)
+		q.text(2, parent->str());
+	else
+		q.null(2);
 	if (q.step() != SQLITE_DONE) return std::unexpected(sqlite_err(db_.get(), "set_parent"));
 	return {};
 }
@@ -368,8 +384,9 @@ result<void> store::put_attachment(const attachment& a) {
 
 result<std::vector<attachment>> store::attachments_of(const node_id& id) {
 	stmt q;
-	if (q.prepare(db_.get(),
-	              "SELECT id,node_id,kind,media_type,path,bytes FROM attachments WHERE node_id=?1") !=
+	if (q.prepare(
+	        db_.get(),
+	        "SELECT id,node_id,kind,media_type,path,bytes FROM attachments WHERE node_id=?1") !=
 	    SQLITE_OK)
 		return std::unexpected(sqlite_err(db_.get(), "attachments_of"));
 	q.text(1, id.str());
@@ -417,7 +434,8 @@ result<void> store::untag(const convo_id& c, std::string_view name) {
 
 result<std::vector<std::string>> store::tags_of(const convo_id& c) {
 	stmt q;
-	if (q.prepare(db_.get(), "SELECT tag FROM convo_tags WHERE convo_id=?1 ORDER BY tag") != SQLITE_OK)
+	if (q.prepare(db_.get(), "SELECT tag FROM convo_tags WHERE convo_id=?1 ORDER BY tag") !=
+	    SQLITE_OK)
 		return std::unexpected(sqlite_err(db_.get(), "tags_of"));
 	q.text(1, c.str());
 	std::vector<std::string> out;
@@ -447,18 +465,20 @@ result<std::vector<search_hit>> run_search(sqlite3* db, const char* sql, std::st
 }  // namespace
 
 result<std::vector<search_hit>> store::search(std::string_view query, int limit) {
-	return run_search(db_.get(),
-	                  "SELECT convo_id, node_id, snippet(nodes_fts,0,'[',']','…',12) FROM nodes_fts "
-	                  "WHERE nodes_fts MATCH ?1 ORDER BY rank LIMIT ?2",
-	                  query, nullptr, limit);
+	return run_search(
+	    db_.get(),
+	    "SELECT convo_id, node_id, snippet(nodes_fts,0,'[',']','…',12) FROM nodes_fts "
+	    "WHERE nodes_fts MATCH ?1 ORDER BY rank LIMIT ?2",
+	    query, nullptr, limit);
 }
 
 result<std::vector<search_hit>> store::search_in(const convo_id& c, std::string_view query,
                                                  int limit) {
-	return run_search(db_.get(),
-	                  "SELECT convo_id, node_id, snippet(nodes_fts,0,'[',']','…',12) FROM nodes_fts "
-	                  "WHERE nodes_fts MATCH ?1 AND convo_id=?2 ORDER BY rank LIMIT ?3",
-	                  query, &c, limit);
+	return run_search(
+	    db_.get(),
+	    "SELECT convo_id, node_id, snippet(nodes_fts,0,'[',']','…',12) FROM nodes_fts "
+	    "WHERE nodes_fts MATCH ?1 AND convo_id=?2 ORDER BY rank LIMIT ?3",
+	    query, &c, limit);
 }
 
 result<void> store::put_sync(const sync_row& r) {
@@ -484,7 +504,8 @@ result<std::optional<sync_row>> store::sync_for(std::string_view backend, std::s
 	q.text(1, backend);
 	q.text(2, remote);
 	if (q.step() != SQLITE_ROW) return std::optional<sync_row>{};
-	return std::optional<sync_row>{sync_row{q.col_text(0), q.col_text(1), q.col_text(2), q.col_text(3)}};
+	return std::optional<sync_row>{
+	    sync_row{q.col_text(0), q.col_text(1), q.col_text(2), q.col_text(3)}};
 }
 
 result<bool> store::check_integrity() {

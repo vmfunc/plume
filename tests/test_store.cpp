@@ -9,8 +9,7 @@ using namespace plume;
 
 namespace {
 std::string tmp_db() {
-	auto p = std::filesystem::temp_directory_path() /
-	         ("plume-test-" + new_id("db") + ".sqlite");
+	auto p = std::filesystem::temp_directory_path() / ("plume-test-" + new_id("db") + ".sqlite");
 	return p.string();
 }
 
@@ -68,7 +67,8 @@ TEST_CASE("fts finds a node by prose, not json syntax") {
 		conversation c;
 		c.id = convo_id{new_id("convo")};
 		REQUIRE(s->put_conversation(c).has_value());
-		auto n = text_node(c.id, std::nullopt, role::assistant, "weaving branches through the loom", 1);
+		auto n =
+		    text_node(c.id, std::nullopt, role::assistant, "weaving branches through the loom", 1);
 		REQUIRE(s->put_node(n).has_value());
 
 		auto hits = s->search("weav*");

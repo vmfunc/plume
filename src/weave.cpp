@@ -226,7 +226,8 @@ result<std::string> weave::to_json(const convo_id& c) {
 	auto conv = store_.conversation_of(c);
 
 	std::string out = "{\n  \"conversation\": \"" + c.str() + "\",\n";
-	if (conv && conv->active_leaf) out += "  \"active_leaf\": \"" + conv->active_leaf->str() + "\",\n";
+	if (conv && conv->active_leaf)
+		out += "  \"active_leaf\": \"" + conv->active_leaf->str() + "\",\n";
 	out += "  \"nodes\": [\n";
 	bool first = true;
 	for (const auto& id : v->preorder) {

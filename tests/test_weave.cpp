@@ -46,8 +46,8 @@ struct fixture {
 // root down to the active leaf, each node the parent of the next.
 bool is_root_to_leaf(const std::vector<node>& path, const node_id& leaf) {
 	if (path.empty()) return false;
-	if (path.front().parent.has_value()) return false;      // starts at the root
-	if (path.back().id != leaf) return false;               // ends at the leaf
+	if (path.front().parent.has_value()) return false;  // starts at the root
+	if (path.back().id != leaf) return false;           // ends at the leaf
 	for (std::size_t i = 1; i < path.size(); ++i)
 		if (!path[i].parent || *path[i].parent != path[i - 1].id) return false;
 	return true;

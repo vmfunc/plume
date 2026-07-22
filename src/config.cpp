@@ -16,7 +16,9 @@ std::string env_or(const char* var, const std::string& fallback) {
 	return fallback;
 }
 
-std::string home() { return env_or("HOME", "."); }
+std::string home() {
+	return env_or("HOME", ".");
+}
 
 thinking_mode thinking_from(std::string_view s) {
 	if (s == "adaptive") return thinking_mode::adaptive;
