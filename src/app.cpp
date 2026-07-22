@@ -7,6 +7,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -76,6 +78,8 @@ struct app::impl {
 	bool in_weave = false;
 	int weave_cursor = 0;
 	std::vector<node_id> weave_order;
+	node_id graft_source;    // set by the first 'g', consumed by the second
+	std::string weave_note;  // transient feedback in the weave detail line
 
 	explicit impl(config c) : cfg(std::move(c)) {}
 	~impl() {
@@ -298,13 +302,14 @@ struct app::impl {
 		}
 		if (rows.empty()) rows.push_back(text("(empty)") | color(col(th.p.muted)));
 		Element tree = vbox(std::move(rows)) | yframe | flex;
-		Element detail =
-		    text(
-		        "hjkl move · enter adopt · s siblings · p prune · P restore · L label · "
-		        "m bookmark · x export dot · ctrl-w back") |
-		    color(col(th.p.subtle));
+		Element help = text(
+		                   "hjkl move · enter adopt · p prune · P restore · m bookmark · g graft · "
+		                   "x export dot · ctrl-w back") |
+		               color(col(th.p.subtle));
+		Elements bottom = {help};
+		if (!weave_note.empty()) bottom.push_back(text(weave_note) | color(col(th.p.gold)));
 		return vbox({text("weave") | bold | color(col(th.p.iris)), separator(), tree, separator(),
-		             detail}) |
+		             vbox(std::move(bottom))}) |
 		       border | color(col(th.p.hl_med)) | flex;
 	}
 
@@ -334,6 +339,28 @@ struct app::impl {
 		if (e == Event::Character("P")) return static_cast<void>(w.restore(sel)), true;
 		if (e == Event::Character("m")) {
 			static_cast<void>(w.set_bookmark(sel, !w.bookmarked(sel).value_or(false)));
+			return true;
+		}
+		if (e == Event::Character("g")) {
+			// two-step: first g marks a source subtree, second g grafts it here.
+			if (graft_source.empty()) {
+				graft_source = sel;
+				weave_note = "graft: pick a new parent, then g";
+			} else {
+				auto r = w.graft(graft_source, sel);
+				weave_note = r ? "grafted" : ("graft refused: " + r.error().detail);
+				graft_source = {};
+			}
+			return true;
+		}
+		if (e == Event::Character("x")) {
+			if (auto dot = w.to_dot(convo)) {
+				const std::string path = cfg.state_dir + "/" + convo.str() + ".dot";
+				std::error_code ec;
+				std::filesystem::create_directories(cfg.state_dir, ec);
+				std::ofstream(path) << *dot;
+				weave_note = "wrote " + path;
+			}
 			return true;
 		}
 		return false;
