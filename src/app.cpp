@@ -7,8 +7,10 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -21,6 +23,7 @@
 
 #include <set>
 
+#include "composer.hpp"
 #include "plume/codec.hpp"
 #include "plume/plugin.hpp"
 #include "plume/provider.hpp"
@@ -93,7 +96,7 @@ struct app::impl {
 	std::int64_t ttft_ms = 0;
 	std::thread worker;
 
-	std::string composer;
+	plume::composer comp;
 	bool in_weave = false;
 	int weave_cursor = 0;
 	std::vector<node_id> weave_order;
@@ -133,6 +136,28 @@ struct app::impl {
 		if (!db) return;
 		weave w(*db);
 		if (auto path = w.active_path(convo)) transcript = *path;
+	}
+
+	// ctrl-e: bounce the composer out to $EDITOR and back, with the terminal
+	// restored around the child process.
+	void edit_in_editor() {
+		const char* ed = std::getenv("EDITOR");
+		const std::string editor = ed && *ed ? ed : "vi";
+		const std::string path =
+		    (std::filesystem::temp_directory_path() / ("plume-compose-" + new_id("c") + ".md"))
+		        .string();
+		{
+			std::ofstream out(path);
+			out << comp.value();
+		}
+		screen.WithRestoredIO(
+		    [&] { static_cast<void>(std::system((editor + " " + path).c_str())); })();
+		std::ifstream in(path);
+		std::string body((std::istreambuf_iterator<char>(in)), {});
+		while (!body.empty() && (body.back() == '\n' || body.back() == '\r')) body.pop_back();
+		comp.set_text(body);
+		std::error_code ec;
+		std::filesystem::remove(path, ec);
 	}
 
 	// persist a user turn and a streaming assistant placeholder, then kick a
@@ -279,7 +304,7 @@ struct app::impl {
 
 	Element header() {
 		return vbox({
-		    hbox({text(" plume ") | bold | color(col(th.p.base)) | bgcolor(col(th.p.iris)),
+		    hbox({text(" "), ui::gradient_text("plume", {th.p.love, th.p.iris, th.p.foam}) | bold,
 		          text("  " + convo_title) | color(col(th.p.subtle)), filler(),
 		          text(in_weave ? "weave " : "") | color(col(th.p.foam)) | dim}),
 		    separator() | color(col(th.p.hl_med)),
@@ -573,21 +598,16 @@ int app::run() {
 		}
 	});
 
-	auto composer = Input(&s.composer, "type to talk, ctrl-w to weave");
-	auto root = Renderer(composer, [&] {
+	// no ftxui Input: the composer is a hand-rolled modal editor, so the whole
+	// keyboard is routed by hand.
+	auto root = Renderer([&] {
 		if (s.wiz.active) {
 			const bool dark = s.caps.background ? s.caps.dark : true;
 			return s.wiz.render(s.wiz.preview_theme(dark), now_ms());
 		}
 		Element body = s.in_weave ? s.weave_view() : s.transcript_view();
-		return vbox({
-		    s.header(),
-		    body | flex,
-		    hbox({text(s.in_weave ? "   " : " › ") | color(col(s.th.p.iris)) | bold,
-		          composer->Render() | flex}) |
-		        bgcolor(col(s.th.p.surface)),
-		    s.statusbar(),
-		});
+		Element input = s.in_weave ? hbox({filler()}) : s.comp.render(s.th);
+		return vbox({s.header(), body | flex, input, s.statusbar()});
 	});
 
 	auto with_keys = CatchEvent(root, [&](const Event& e) {
@@ -620,13 +640,19 @@ int app::run() {
 			s.handle_weave(e);
 			return true;
 		}
-		if (e == Event::Return && !s.composer.empty()) {
-			const std::string t = s.composer;
-			s.composer.clear();
-			s.send(t);
-			return true;
+		// chat: the modal composer handles every key.
+		switch (s.comp.handle(e)) {
+			case composer::result::submit:
+				if (!s.comp.value().empty()) {
+					const std::string t = s.comp.value();
+					s.comp.clear();
+					s.send(t);
+				}
+				return true;
+			case composer::result::to_editor: s.edit_in_editor(); return true;
+			case composer::result::none: return true;
 		}
-		return false;  // let the composer input handle the rest
+		return true;
 	});
 
 	s.screen.Loop(with_keys);

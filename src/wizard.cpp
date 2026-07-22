@@ -1,7 +1,9 @@
 #include "wizard.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 
 #include <ftxui/component/screen_interactive.hpp>
@@ -68,9 +70,13 @@ Element step_dots(const theme& th, int at, int total) {
 }
 
 Element shell(const theme& th, int at, const std::string& title, Element body,
-              const std::string& hint) {
+              const std::string& hint, std::int64_t ms, std::int64_t entered) {
+	// soft entry: the border brightens and the card rises into place.
+	const float t = std::clamp(static_cast<float>(ms - entered) / 260.0f, 0.0f, 1.0f);
+	const rgb border = ui::lerp(th.p.hl_low, th.p.hl_high, t);
 	Element card = vbox({
-	                   hbox({text("plume") | bold | C(th.p.iris), filler(), step_dots(th, at, 6)}),
+	                   hbox({ui::gradient_text("plume", {th.p.love, th.p.iris, th.p.foam}) | bold,
+	                         filler(), step_dots(th, at, 6)}),
 	                   separator() | C(th.p.hl_med),
 	                   text(title) | bold | C(th.p.gold),
 	                   text(""),
@@ -79,9 +85,12 @@ Element shell(const theme& th, int at, const std::string& title, Element body,
 	                   separator() | C(th.p.hl_med),
 	                   text(hint) | C(th.p.subtle) | dim,
 	               }) |
-	               borderRounded | C(th.p.hl_high) | size(WIDTH, GREATER_THAN, 56) |
+	               borderRounded | color(ui::col(border)) | size(WIDTH, GREATER_THAN, 56) |
 	               size(WIDTH, LESS_THAN, 92);
-	return vbox({filler(), hbox({filler(), card, filler()}), filler()}) |
+	const int lift = static_cast<int>(std::lround((1.0f - t) * 2.0f));
+	Elements above;
+	for (int i = 0; i < lift; ++i) above.push_back(text(""));
+	return vbox({filler(), vbox(std::move(above)), hbox({filler(), card, filler()}), filler()}) |
 	       bgcolor(ui::col(th.p.base));
 }
 
@@ -139,7 +148,9 @@ Element caps_body(const theme& th, const term::capabilities& caps, std::int64_t 
 		out.push_back(hbox({text("  background  ") | C(th.p.muted),
 		                    text(bg) | C(caps.dark ? th.p.iris : th.p.gold)}));
 	}
-	return vbox(std::move(out));
+	// a themed inline image, drawn as half-blocks so it lands in any terminal.
+	Element splash = ui::image_halfblock(ui::splash_bitmap(48, 20, th), 44, 9) | hcenter;
+	return vbox({splash, text(""), vbox(std::move(out))});
 }
 
 Element provider_body(const wizard& w, const theme& th, std::int64_t ms) {
@@ -221,25 +232,26 @@ Element wizard::render(const theme& th, std::int64_t ms) {
 	switch (at) {
 		case step::caps:
 			return shell(th, 0, "terminal report card", caps_body(th, caps, entered_ms, ms),
-			             "enter to continue");
+			             "enter to continue", ms, entered_ms);
 		case step::provider:
 			return shell(
 			    th, 1, "connect a provider", provider_body(*this, th, ms),
-			    psub == 2 ? "type, enter to check, esc back" : "j/k choose · enter · esc back");
+			    psub == 2 ? "type, enter to check, esc back" : "j/k choose · enter · esc back", ms,
+			    entered_ms);
 		case step::theme:
 			return shell(th, 2, "pick a theme", theme_body(*this, th),
-			             "j/k choose · enter · esc back");
+			             "j/k choose · enter · esc back", ms, entered_ms);
 		case step::keys:
 			return shell(th, 3, "keys and density", keys_body(*this, th),
-			             "j/k row · h/l change · enter · esc back");
+			             "j/k row · h/l change · enter · esc back", ms, entered_ms);
 		case step::import_:
 			return shell(th, 4, "import from claude.ai (optional)", import_body(*this, th, ms),
-			             "type a path, enter to import or skip");
+			             "type a path, enter to import or skip", ms, entered_ms);
 		case step::done:
 			return shell(th, 5, "ready",
 			             vbox({text("  everything is set.") | C(th.p.text), text(""),
 			                   text("  bonne écriture.") | C(th.p.gold) | italic}),
-			             "enter to begin");
+			             "enter to begin", ms, entered_ms);
 	}
 	return text("");
 }

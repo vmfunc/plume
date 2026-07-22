@@ -6,11 +6,13 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <ftxui/dom/elements.hpp>
 
 #include "plume/color.hpp"
+#include "plume/image.hpp"
 #include "plume/message.hpp"
 #include "plume/theme.hpp"
 
@@ -18,6 +20,17 @@ namespace plume::ui {
 
 ftxui::Color col(rgb c);
 rgb lerp(rgb a, rgb b, float t);
+rgb lerp(const std::vector<rgb>& stops, float t);  // multi-stop
+
+// each glyph tinted along a gradient of stops. ascii only.
+ftxui::Element gradient_text(std::string_view, std::vector<rgb> stops);
+
+// a themed decorative bitmap for the wizard splash (a soft 4-corner wash).
+img::bitmap splash_bitmap(int w, int h, const theme&);
+
+// draw a decoded image as half-block cells straight into the screen grid, so it
+// renders in any truecolor terminal. fits inside max_cols x max_rows.
+ftxui::Element image_halfblock(const img::bitmap&, int max_cols, int max_rows);
 
 // a smooth 0..1..0 over period_ms, for a breathing glyph.
 float breathe(std::int64_t ms, int period_ms);
