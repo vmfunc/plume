@@ -53,7 +53,8 @@ TEST_CASE("anthropic stream assembles thinking + text across byte-split reads") 
 	// the worst case the wire can throw at it.
 	sse_parser parser;
 	const std::string wire = kFixture;
-	for (char c : wire) parser.feed(std::string_view(&c, 1), [&](const sse_event& e) { a.event(e); });
+	for (char c : wire)
+		parser.feed(std::string_view(&c, 1), [&](const sse_event& e) { a.event(e); });
 	parser.finish([&](const sse_event& e) { a.event(e); });
 	a.finish();
 

@@ -45,9 +45,10 @@ struct placement {
 // the fg color carrying an image id in a cell (24-bit id in the rgb channels).
 [[nodiscard]] std::string image_id_fg(std::uint32_t id);
 
-// transmit escape for an rgba image under a given id, chunked as the protocol
-// requires. empty for non-kitty modes.
-[[nodiscard]] std::string kitty_transmit(std::uint32_t id, const bitmap&);
+// transmit an rgba image under a given id and create a virtual placement of
+// cols x rows cells, chunked as the protocol requires. this is the string
+// written once before the placeholder cells are laid into the grid.
+[[nodiscard]] std::string kitty_transmit(std::uint32_t id, const bitmap&, int cols, int rows);
 
 class pipeline {
    public:

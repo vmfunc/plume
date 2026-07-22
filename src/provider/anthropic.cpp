@@ -20,7 +20,9 @@ using json = nlohmann::json;
 constexpr const char* kDefaultBase = "https://api.anthropic.com";
 constexpr const char* kVersion = "2023-06-01";
 
-bool contains(const std::string& id, const char* needle) { return id.find(needle) != std::string::npos; }
+bool contains(const std::string& id, const char* needle) {
+	return id.find(needle) != std::string::npos;
+}
 
 // the 4.6+ line and Fable/Mythos reject assistant prefill outright.
 bool prefill_blocked(const std::string& id) {
@@ -85,8 +87,8 @@ class anthropic_provider final : public provider {
 			auto resp = http::get(url, headers());
 			if (!resp) return std::unexpected(resp.error());
 			if (resp->status != 200)
-				return fail(errc::http_status, "models: http " + std::to_string(resp->status) + ": " +
-				                                   resp->body);
+				return fail(errc::http_status,
+				            "models: http " + std::to_string(resp->status) + ": " + resp->body);
 			json j = json::parse(resp->body, nullptr, false);
 			if (j.is_discarded()) return fail(errc::parse, "models: bad json");
 			for (const auto& m : j.value("data", json::array())) {
@@ -112,8 +114,8 @@ class anthropic_provider final : public provider {
 		auto resp = http::post(base_ + "/v1/messages/count_tokens", headers(), body->dump());
 		if (!resp) return std::unexpected(resp.error());
 		if (resp->status != 200)
-			return fail(errc::http_status, "count_tokens: http " + std::to_string(resp->status) +
-			                                   ": " + resp->body);
+			return fail(errc::http_status,
+			            "count_tokens: http " + std::to_string(resp->status) + ": " + resp->body);
 		json j = json::parse(resp->body, nullptr, false);
 		if (j.is_discarded()) return fail(errc::parse, "count_tokens: bad json");
 		return j.value("input_tokens", 0LL);
@@ -194,9 +196,11 @@ class anthropic_provider final : public provider {
 		// the seam mid-message weaving rides on; guard it hard.
 		if (req.assistant_prefill && !req.assistant_prefill->empty()) {
 			if (prefill_blocked(p.model))
-				return fail(errc::unsupported, "model " + p.model + " does not support assistant prefill");
+				return fail(errc::unsupported,
+				            "model " + p.model + " does not support assistant prefill");
 			if (p.thinking != thinking_mode::off)
-				return fail(errc::unsupported, "assistant prefill is incompatible with extended thinking");
+				return fail(errc::unsupported,
+				            "assistant prefill is incompatible with extended thinking");
 			messages.push_back(
 			    {{"role", "assistant"},
 			     {"content", json::array({{{"type", "text"}, {"text", *req.assistant_prefill}}})}});
@@ -208,7 +212,8 @@ class anthropic_provider final : public provider {
 			for (const auto& t : req.tools) {
 				json schema = json::parse(t.input_schema_json, nullptr, false);
 				if (schema.is_discarded()) schema = {{"type", "object"}};
-				tools.push_back({{"name", t.name}, {"description", t.description}, {"input_schema", schema}});
+				tools.push_back(
+				    {{"name", t.name}, {"description", t.description}, {"input_schema", schema}});
 			}
 			if (req.cache_prefix && !tools.empty())
 				tools.back()["cache_control"] = {{"type", "ephemeral"}};
@@ -222,8 +227,7 @@ class anthropic_provider final : public provider {
 			case thinking_mode::budget:
 				body["thinking"] = {{"type", "enabled"}, {"budget_tokens", p.thinking_budget}};
 				break;
-			case thinking_mode::off:
-				break;
+			case thinking_mode::off: break;
 		}
 		if (!p.effort.empty()) body["output_config"] = {{"effort", p.effort}};
 

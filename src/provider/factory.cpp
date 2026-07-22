@@ -51,12 +51,13 @@ result<std::string> keychain_lookup(const std::string& account) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-field-initializers"
 	static const SecretSchema schema = {
-	    "sh.collar.plume", SECRET_SCHEMA_NONE,
+	    "sh.collar.plume",
+	    SECRET_SCHEMA_NONE,
 	    {{"account", SECRET_SCHEMA_ATTRIBUTE_STRING}, {nullptr, SECRET_SCHEMA_ATTRIBUTE_STRING}}};
 #pragma clang diagnostic pop
 	GError* err = nullptr;
-	gchar* pw = secret_password_lookup_sync(&schema, nullptr, &err, "account", account.c_str(),
-	                                        nullptr);
+	gchar* pw =
+	    secret_password_lookup_sync(&schema, nullptr, &err, "account", account.c_str(), nullptr);
 	if (err) {
 		std::string m = err->message ? err->message : "keychain error";
 		g_error_free(err);
@@ -81,12 +82,9 @@ result<std::string> resolve_auth(const auth& a) {
 			if (!v || !*v) return fail(errc::auth, "env var " + a.value + " is unset");
 			return std::string(v);
 		}
-		case auth::source::inline_key:
-			return a.value;
-		case auth::source::key_cmd:
-			return run_key_cmd(a.value);
-		case auth::source::keychain:
-			return keychain_lookup(a.value);
+		case auth::source::inline_key: return a.value;
+		case auth::source::key_cmd: return run_key_cmd(a.value);
+		case auth::source::keychain: return keychain_lookup(a.value);
 	}
 	return fail(errc::auth, "unknown auth source");
 }
@@ -115,8 +113,7 @@ result<std::unique_ptr<provider>> make_provider(const provider_config& cfg) {
 	}
 
 	const std::string base = cfg.base_url.empty() ? default_base(cfg.kind) : cfg.base_url;
-	if (base.empty())
-		return fail(errc::config, "provider '" + cfg.kind + "' needs a base_url");
+	if (base.empty()) return fail(errc::config, "provider '" + cfg.kind + "' needs a base_url");
 	return make_openai_compatible(cfg.kind, base, key);
 }
 

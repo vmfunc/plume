@@ -29,8 +29,9 @@ json message_to_wire(const message& m) {
 		if (const auto* t = std::get_if<text_block>(&b)) {
 			content.push_back({{"type", "text"}, {"text", t->text}});
 		} else if (const auto* im = std::get_if<image_block>(&b)) {
-			content.push_back({{"type", "image_url"},
-			                   {"image_url", {{"url", "data:" + im->media_type + ";base64," + im->data}}}});
+			content.push_back(
+			    {{"type", "image_url"},
+			     {"image_url", {{"url", "data:" + im->media_type + ";base64," + im->data}}}});
 		}
 		// documents and tool blocks have no portable openai shape here.
 	}
@@ -120,7 +121,8 @@ class openai_provider final : public provider {
 		if (!r) return std::unexpected(r.error());
 		parser.finish(on_event);
 		if (r->status != 200)
-			return fail(errc::http_status, "http " + std::to_string(r->status) + ": " + r->error_body);
+			return fail(errc::http_status,
+			            "http " + std::to_string(r->status) + ": " + r->error_body);
 
 		out.reply = message::text(role::assistant, text_buf);
 		on_delta({stream_delta::kind::done, out.stop_reason, {}, {}});
