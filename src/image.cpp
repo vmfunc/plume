@@ -109,9 +109,9 @@ std::string kitty_transmit(std::uint32_t id, const bitmap& bm, int cols, int row
 
 	// first chunk carries the control keys; the payload is split at 4096 base64
 	// bytes with m=1 on every chunk but the last, per the protocol.
-	std::string keys = "a=T,U=1,q=2,i=" + std::to_string(id) + ",f=32,s=" +
-	                   std::to_string(bm.width) + ",v=" + std::to_string(bm.height) + ",c=" +
-	                   std::to_string(cols) + ",r=" + std::to_string(rows);
+	std::string keys = "a=T,U=1,q=2,i=" + std::to_string(id) +
+	                   ",f=32,s=" + std::to_string(bm.width) + ",v=" + std::to_string(bm.height) +
+	                   ",c=" + std::to_string(cols) + ",r=" + std::to_string(rows);
 
 	constexpr std::size_t chunk = 4096;
 	std::string out;
@@ -134,7 +134,8 @@ result<bitmap> decode(std::string_view path) {
 	int w = 0, h = 0, n = 0;
 	std::string p(path);
 	unsigned char* pixels = stbi_load(p.c_str(), &w, &h, &n, 4);
-	if (!pixels) return fail(errc::io, std::string("cannot decode image: ") + stbi_failure_reason());
+	if (!pixels)
+		return fail(errc::io, std::string("cannot decode image: ") + stbi_failure_reason());
 	bitmap bm;
 	bm.width = w;
 	bm.height = h;

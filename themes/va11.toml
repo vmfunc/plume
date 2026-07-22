@@ -1,0 +1,20 @@
+# va11 — warm amber base, magenta and cyan neon
+name = "va11"
+dark = true
+
+[palette]
+base = "#16111a"
+surface = "#1e1622"
+overlay = "#2a1f30"
+muted = "#7a6a80"
+subtle = "#b39ac0"
+text = "#f4e8d8"
+love = "#ff5c8a"
+gold = "#ffb454"
+rose = "#ff7edb"
+pine = "#36c5f0"
+foam = "#5ef1ff"
+iris = "#b57edc"
+highlight_low = "#201826"
+highlight_med = "#3a2c44"
+highlight_high = "#4e3a5a"

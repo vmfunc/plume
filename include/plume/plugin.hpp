@@ -41,6 +41,10 @@ class plugin_host {
 	// load every plugin directory under root, honoring manifests and approval.
 	[[nodiscard]] result<void> load_all(const std::string& root, const approval_fn&);
 
+	// the host injects a way for net-approved plugins to call a model, so
+	// plume.model.complete works without the plugin holding a provider itself.
+	void set_model(std::function<std::string(const std::string& prompt, const std::string& model)>);
+
 	// lifecycle hooks. pre_send may rewrite the outgoing text; on_key returns
 	// true if the plugin consumed the key.
 	[[nodiscard]] std::string run_pre_send(std::string outgoing);
