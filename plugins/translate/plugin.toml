@@ -1,0 +1,5 @@
+name = "translate"
+version = "1"
+entry = "init.lua"
+# net lets this plugin call a model through plume.model.complete.
+capabilities = ["net"]

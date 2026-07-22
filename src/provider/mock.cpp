@@ -27,7 +27,8 @@ class mock_provider final : public provider {
 
 	result<std::int64_t> count_tokens(const request& req) override {
 		std::int64_t n = 0;
-		for (const auto& m : req.messages) n += static_cast<std::int64_t>(m.plain_text().size()) / 4;
+		for (const auto& m : req.messages)
+			n += static_cast<std::int64_t>(m.plain_text().size()) / 4;
 		return n;
 	}
 
@@ -35,10 +36,11 @@ class mock_provider final : public provider {
 	                          const std::function<void(const stream_delta&)>& on_delta,
 	                          const std::function<bool()>& stop) override {
 		static const std::vector<std::string> words = {
-		    "a ", "quill ", "is ",   "an ",  "old ", "instrument:\n\n", "you ",  "cut ",
-		    "a ", "feather ", "to ", "a ",   "nib, ", "dip ", "it ",     "in ",   "ink, ",
-		    "and ", "the ",  "line ", "you ", "draw ", "is ", "yours. ", "plume ", "keeps ",
-		    "that ", "line ", "in ",  "a ",   "tree ", "you ", "can ",   "weave ", "through."};
+		    "a ",    "quill ", "is ",      "an ",    "old ",   "instrument:\n\n", "you ",
+		    "cut ",  "a ",     "feather ", "to ",    "a ",     "nib, ",           "dip ",
+		    "it ",   "in ",    "ink, ",    "and ",   "the ",   "line ",           "you ",
+		    "draw ", "is ",    "yours. ",  "plume ", "keeps ", "that ",           "line ",
+		    "in ",   "a ",     "tree ",    "you ",   "can ",   "weave ",          "through."};
 		completion out;
 		out.model = "mock-model";
 		std::string text;
@@ -60,6 +62,8 @@ class mock_provider final : public provider {
 
 }  // namespace
 
-std::unique_ptr<provider> make_mock() { return std::make_unique<mock_provider>(); }
+std::unique_ptr<provider> make_mock() {
+	return std::make_unique<mock_provider>();
+}
 
 }  // namespace plume

@@ -1,0 +1,5 @@
+name = "wordcount"
+version = "1"
+entry = "init.lua"
+# no capabilities: this one only reads text it is handed and writes a segment.
+capabilities = []

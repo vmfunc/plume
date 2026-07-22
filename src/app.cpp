@@ -17,7 +17,10 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 
+#include <set>
+
 #include "plume/codec.hpp"
+#include "plume/plugin.hpp"
 #include "plume/provider.hpp"
 #include "plume/store.hpp"
 #include "plume/terminal.hpp"
@@ -30,7 +33,9 @@ using namespace ftxui;
 
 namespace {
 
-Color col(rgb c) { return Color::RGB(c.r, c.g, c.b); }
+Color col(rgb c) {
+	return Color::RGB(c.r, c.g, c.b);
+}
 
 std::int64_t now_ms() {
 	using namespace std::chrono;
@@ -48,6 +53,7 @@ struct app::impl {
 	term::capabilities caps;
 	std::optional<store> db;
 	std::unique_ptr<provider> prov;
+	std::unique_ptr<plugin_host> plugins;
 
 	ScreenInteractive screen = ScreenInteractive::Fullscreen();
 
@@ -94,9 +100,14 @@ struct app::impl {
 
 	// persist a user turn and a streaming assistant placeholder, then kick a
 	// worker to stream the reply into live_text.
-	void send(const std::string& text) {
-		if (streaming || !db || !prov || text.empty()) return;
+	void send(const std::string& raw) {
+		if (streaming || !db || !prov || raw.empty()) return;
 		if (worker.joinable()) worker.join();
+
+		// plugins may rewrite the outgoing message (pre_send). cheap text hooks
+		// run inline; a hook that reaches for a model only does so when the user
+		// granted its net capability.
+		const std::string text = plugins ? plugins->run_pre_send(raw) : raw;
 
 		weave w(*db);
 		std::optional<node_id> parent;
@@ -142,18 +153,20 @@ struct app::impl {
 					if (ttft_ms == 0 && (d.type == stream_delta::kind::text ||
 					                     d.type == stream_delta::kind::thinking))
 						ttft_ms = now_ms() - start;
-					if (d.type == stream_delta::kind::text) live_text += d.text;
-					else if (d.type == stream_delta::kind::thinking) live_think += d.text;
-					else if (d.type == stream_delta::kind::usage) last_usage = d.tokens;
+					if (d.type == stream_delta::kind::text) {
+						live_text += d.text;
+						if (plugins) plugins->run_on_chunk(d.text);
+					} else if (d.type == stream_delta::kind::thinking)
+						live_think += d.text;
+					else if (d.type == stream_delta::kind::usage)
+						last_usage = d.tokens;
 				});
 				screen.PostEvent(Event::Custom);
 			};
 			auto stop = [this] { return stop_flag.load(); };
 			auto out = prov->stream(req, on_delta, stop);
 
-			screen.Post([this, out = std::move(out), user_id] {
-				finish_stream(out, user_id);
-			});
+			screen.Post([this, out = std::move(out), user_id] { finish_stream(out, user_id); });
 			screen.PostEvent(Event::Custom);
 		});
 	}
@@ -175,13 +188,15 @@ struct app::impl {
 			last_usage = out->tokens;
 		} else {
 			status_error = out.error().detail;
-			reply.content_json = codec::encode_blocks({text_block{"[error: " + out.error().detail + "]"}});
+			reply.content_json =
+			    codec::encode_blocks({text_block{"[error: " + out.error().detail + "]"}});
 			reply.state = node_state::error;
 		}
 		if (db) {
 			static_cast<void>(db->put_node(reply));
 			static_cast<void>(db->set_active_leaf(convo, reply.id));
 		}
+		if (plugins && out) plugins->run_post_receive(out->reply.plain_text());
 		live_text.clear();
 		live_think.clear();
 		reload_transcript();
@@ -192,7 +207,8 @@ struct app::impl {
 	double cost_of(const usage& u) const {
 		if (auto it = cfg.prices.find(model_id()); it != cfg.prices.end())
 			return (u.input * it->second.input + u.output * it->second.output +
-			        u.cache_read * it->second.cache_read + u.cache_creation * it->second.cache_write) /
+			        u.cache_read * it->second.cache_read +
+			        u.cache_creation * it->second.cache_write) /
 			       1e6;
 		return 0.0;
 	}
@@ -204,20 +220,23 @@ struct app::impl {
 		auto seg = [&](const std::string& s, rgb c) {
 			return hbox({text(" " + s + " ") | color(col(c))});
 		};
-		return hbox({
-		           seg(model_id(), th.p.iris),
-		           text("· ") | color(col(th.p.muted)),
-		           seg("in " + std::to_string(tot.input) + " out " + std::to_string(tot.output),
-		               th.p.foam),
-		           text("· ") | color(col(th.p.muted)),
-		           seg("$" + cost, th.p.gold),
-		           text("· ") | color(col(th.p.muted)),
-		           seg(std::to_string(ttft_ms) + "ms", th.p.pine),
-		           filler(),
-		           streaming ? text("streaming ") | color(col(th.p.rose)) | blink : text(""),
-		           text(in_weave ? "weave " : "chat ") | color(col(th.p.subtle)),
-		       }) |
-		       bgcolor(col(th.p.surface));
+		Elements line = {
+		    seg(model_id(), th.p.iris),
+		    text("· ") | color(col(th.p.muted)),
+		    seg("in " + std::to_string(tot.input) + " out " + std::to_string(tot.output),
+		        th.p.foam),
+		    text("· ") | color(col(th.p.muted)),
+		    seg("$" + cost, th.p.gold),
+		    text("· ") | color(col(th.p.muted)),
+		    seg(std::to_string(ttft_ms) + "ms", th.p.pine),
+		};
+		// statusline segments contributed by plugins.
+		if (plugins)
+			for (const auto& s : plugins->statusline()) line.push_back(seg(s.text, th.p.rose));
+		line.push_back(filler());
+		line.push_back(streaming ? text("streaming ") | color(col(th.p.rose)) | blink : text(""));
+		line.push_back(text(in_weave ? "weave " : "chat ") | color(col(th.p.subtle)));
+		return hbox(std::move(line)) | bgcolor(col(th.p.surface));
 	}
 
 	Element render_node(const node& n) {
@@ -230,8 +249,8 @@ struct app::impl {
 		if (blocks)
 			for (const auto& b : *blocks)
 				if (const auto* th_blk = std::get_if<thinking_block>(&b); th_blk && show_think)
-					lines.push_back(paragraph("thinking: " + th_blk->thinking) | color(col(th.p.muted)) |
-					                dim);
+					lines.push_back(paragraph("thinking: " + th_blk->thinking) |
+					                color(col(th.p.muted)) | dim);
 		return vbox(std::move(lines)) | border | color(col(th.p.hl_med));
 	}
 
@@ -269,7 +288,8 @@ struct app::impl {
 				std::string label = codec::read_str(tn.data.params_json, "label").value_or("");
 				bool mark = codec::read_bool(tn.data.params_json, "bookmark").value_or(false);
 				rgb c = tn.data.role == role::user ? th.p.pine : th.p.foam;
-				std::string line = indent + (mark ? "★ " : "• ") + std::string(to_string(tn.data.role));
+				std::string line =
+				    indent + (mark ? "★ " : "• ") + std::string(to_string(tn.data.role));
 				if (!label.empty()) line += " [" + label + "]";
 				Element e = text(line) | color(col(c));
 				if (i == weave_cursor) e = e | bgcolor(col(th.p.hl_high)) | bold | focus;
@@ -278,9 +298,11 @@ struct app::impl {
 		}
 		if (rows.empty()) rows.push_back(text("(empty)") | color(col(th.p.muted)));
 		Element tree = vbox(std::move(rows)) | yframe | flex;
-		Element detail = text("hjkl move · enter adopt · s siblings · p prune · P restore · L label · "
-		                      "m bookmark · x export dot · ctrl-w back") |
-		                 color(col(th.p.subtle));
+		Element detail =
+		    text(
+		        "hjkl move · enter adopt · s siblings · p prune · P restore · L label · "
+		        "m bookmark · x export dot · ctrl-w back") |
+		    color(col(th.p.subtle));
 		return vbox({text("weave") | bold | color(col(th.p.iris)), separator(), tree, separator(),
 		             detail}) |
 		       border | color(col(th.p.hl_med)) | flex;
@@ -295,8 +317,8 @@ struct app::impl {
 	bool handle_weave(const Event& e) {
 		weave w(*db);
 		auto move = [&](int d) {
-			weave_cursor = std::max(0, std::min<int>(weave_cursor + d,
-			                                         static_cast<int>(weave_order.size()) - 1));
+			weave_cursor = std::max(
+			    0, std::min<int>(weave_cursor + d, static_cast<int>(weave_order.size()) - 1));
 		};
 		if (e == Event::Character("j") || e == Event::ArrowDown) return move(1), true;
 		if (e == Event::Character("k") || e == Event::ArrowUp) return move(-1), true;
@@ -330,11 +352,15 @@ result<app> app::create(config cfg) {
 
 	s.caps = term::probe();
 	const bool dark = s.caps.background ? s.caps.dark : true;
-	if (auto th = resolve_theme(s.cfg.ui.theme, s.cfg.config_dir + "/themes", dark)) s.th = *th;
-	else s.th = rose_pine();
+	if (auto th = resolve_theme(s.cfg.ui.theme, s.cfg.config_dir + "/themes", dark))
+		s.th = *th;
+	else
+		s.th = rose_pine();
 
-	if (auto db = store::open(s.cfg.data_dir + "/plume.sqlite")) s.db = std::move(*db);
-	else return fail(db.error().code, db.error().detail);
+	if (auto db = store::open(s.cfg.data_dir + "/plume.sqlite"))
+		s.db = std::move(*db);
+	else
+		return fail(db.error().code, db.error().detail);
 
 	// resolve or create the working conversation.
 	if (auto list = s.db->conversations(); list && !list->empty()) {
@@ -359,9 +385,12 @@ result<app> app::create(config cfg) {
 		pc.kind = pe->kind;
 		pc.base_url = pe->base_url;
 		pc.credential.value = pe->auth_value;
-		if (pe->auth_source == "key_cmd") pc.credential.kind = auth::source::key_cmd;
-		else if (pe->auth_source == "keychain") pc.credential.kind = auth::source::keychain;
-		else if (pe->auth_source == "inline") pc.credential.kind = auth::source::inline_key;
+		if (pe->auth_source == "key_cmd")
+			pc.credential.kind = auth::source::key_cmd;
+		else if (pe->auth_source == "keychain")
+			pc.credential.kind = auth::source::keychain;
+		else if (pe->auth_source == "inline")
+			pc.credential.kind = auth::source::inline_key;
 		if (auto p = make_provider(pc)) s.prov = std::move(*p);
 	} else if (const char* key = std::getenv("ANTHROPIC_API_KEY"); key && *key) {
 		// zero-config: an env key drops you straight into a working chat.
@@ -374,6 +403,49 @@ result<app> app::create(config cfg) {
 			s.cfg.default_provider = "anthropic";
 			s.cfg.providers["anthropic"] = {"anthropic", "", "env", "ANTHROPIC_API_KEY", ""};
 		}
+	}
+
+	// plugin host. capabilities are denied by default; a user grants them by
+	// listing them in PLUME_PLUGIN_CAPS (interactive per-plugin approval is a
+	// refinement — see docs/plugins.md).
+	if (auto ph = plugin_host::create()) {
+		s.plugins = std::move(*ph);
+		impl* sp = &s;
+		s.plugins->set_model(
+		    [sp](const std::string& prompt, const std::string& model) -> std::string {
+			    if (!sp->prov) return {};
+			    request r;
+			    r.params = sp->cfg.defaults;
+			    r.params.model = model.empty() ? sp->model_id() : model;
+			    r.params.thinking = thinking_mode::off;
+			    r.messages.push_back(message::text(role::user, prompt));
+			    std::string out;
+			    auto res = sp->prov->stream(
+			        r,
+			        [&out](const stream_delta& d) {
+				        if (d.type == stream_delta::kind::text) out += d.text;
+			        },
+			        [] { return false; });
+			    return res ? out : std::string{};
+		    });
+
+		std::set<std::string> granted;
+		if (const char* caps = std::getenv("PLUME_PLUGIN_CAPS")) {
+			std::string c(caps), tok;
+			for (char ch : c) {
+				if (ch == ',') {
+					if (!tok.empty()) granted.insert(tok);
+					tok.clear();
+				} else {
+					tok.push_back(ch);
+				}
+			}
+			if (!tok.empty()) granted.insert(tok);
+		}
+		auto approve = [granted](const std::string&, const std::string& cap) {
+			return granted.contains(cap);
+		};
+		static_cast<void>(s.plugins->load_all(s.cfg.config_dir + "/plugins", approve));
 	}
 
 	return a;
@@ -405,10 +477,10 @@ int app::run() {
 		}
 		Element main = wizard ? wizard : body;
 		return vbox({
-			s.statusline(),
-			main | flex,
-			hbox({text("› ") | color(col(s.th.p.iris)), composer->Render() | flex}) |
-			    bgcolor(col(s.th.p.surface)),
+		    s.statusline(),
+		    main | flex,
+		    hbox({text("› ") | color(col(s.th.p.iris)), composer->Render() | flex}) |
+		        bgcolor(col(s.th.p.surface)),
 		});
 	});
 
