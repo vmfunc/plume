@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <optional>
 #include <thread>
@@ -30,6 +31,7 @@
 
 #include "composer.hpp"
 #include "plume/codec.hpp"
+#include "plume/image.hpp"
 #include "plume/mcp.hpp"
 #include "plume/plugin.hpp"
 #include "plume/provider.hpp"
@@ -39,6 +41,7 @@
 #include "plume/theme.hpp"
 #include "plume/weave.hpp"
 #include "ui.hpp"
+#include "util_base64.hpp"
 #include "wizard.hpp"
 
 namespace plume {
@@ -56,35 +59,10 @@ std::int64_t now_ms() {
 	return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
-std::string base64(std::string_view in) {
-	static constexpr char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-	std::string out;
-	out.reserve((in.size() + 2) / 3 * 4);
-	std::size_t i = 0;
-	for (; i + 2 < in.size(); i += 3) {
-		const auto n = static_cast<std::uint32_t>((static_cast<unsigned char>(in[i]) << 16) |
-		                                          (static_cast<unsigned char>(in[i + 1]) << 8) |
-		                                          static_cast<unsigned char>(in[i + 2]));
-		out.push_back(t[(n >> 18) & 63]);
-		out.push_back(t[(n >> 12) & 63]);
-		out.push_back(t[(n >> 6) & 63]);
-		out.push_back(t[n & 63]);
-	}
-	if (i < in.size()) {
-		std::uint32_t n = static_cast<unsigned char>(in[i]) << 16;
-		if (i + 1 < in.size()) n |= static_cast<unsigned char>(in[i + 1]) << 8;
-		out.push_back(t[(n >> 18) & 63]);
-		out.push_back(t[(n >> 12) & 63]);
-		out.push_back(i + 1 < in.size() ? t[(n >> 6) & 63] : '=');
-		out.push_back('=');
-	}
-	return out;
-}
-
 // copy to the system clipboard via OSC 52. the terminal consumes the escape
 // immediately, so it survives ftxui repainting the cells around it.
 void osc52_copy(std::string_view s) {
-	const std::string seq = "\x1b]52;c;" + base64(s) + "\x07";
+	const std::string seq = "\x1b]52;c;" + detail::base64_encode(s) + "\x07";
 	std::fwrite(seq.data(), 1, seq.size(), stdout);
 	std::fflush(stdout);
 }
@@ -107,9 +85,10 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 19> kActions = {{
+constexpr std::array<action, 20> kActions = {{
     {"weave", "open the loom", false},
     {"model", "set the model <id>", true},
+    {"attach", "attach an image/pdf <path>", true},
     {"params", "show sampling params", false},
     {"temp", "set temperature <0..1>", true},
     {"top_p", "set top_p <0..1>", true},
@@ -220,6 +199,9 @@ struct app::impl {
 	std::vector<tool_result_block> tool_results;
 	node_id tool_parent;  // the assistant turn that requested the tools
 
+	// images/pdfs staged with /attach, folded into the next user turn.
+	std::vector<content_block> pending_attach;
+
 	// parallel spawn (the loom): k branches streaming at once, in columns.
 	bool spawning = false;
 	bool spawn_done = false;
@@ -286,6 +268,21 @@ struct app::impl {
 			for (const auto& b : *blocks)
 				if (const auto* t = std::get_if<text_block>(&b)) out += t->text;
 		return out;
+	}
+
+	// decoded image previews, memoized by path so the transcript can render an
+	// attachment inline without re-decoding every frame. a zero-size entry marks
+	// a file that failed to decode, so we don't keep retrying it.
+	std::map<std::string, img::bitmap> image_cache;
+	const img::bitmap* preview(const std::string& path) {
+		if (auto it = image_cache.find(path); it != image_cache.end())
+			return it->second.width > 0 ? &it->second : nullptr;
+		if (auto bm = img::decode(path); bm && bm->width > 0) {
+			auto [it, _] = image_cache.emplace(path, std::move(*bm));
+			return &it->second;
+		}
+		image_cache.emplace(path, img::bitmap{});
+		return nullptr;
 	}
 
 	// the request context (root -> leaf) as provider messages.
@@ -531,6 +528,8 @@ struct app::impl {
 			ov = overlay::cheatsheet;
 		} else if (name == "continue") {
 			continue_turn();
+		} else if (name == "attach") {
+			attach(arg);
 		} else if (name == "quit") {
 			screen.ExitLoopClosure()();
 		} else if (set_param(name, arg)) {
@@ -547,9 +546,10 @@ struct app::impl {
 		send("continue.");
 	}
 
-	// sampling-param setters and the /params summary live in app_tools.cpp.
+	// sampling-param setters, /params summary and /attach live in app_tools.cpp.
 	bool set_param(const std::string& name, const std::string& arg);
 	std::string params_summary() const;
+	void attach(const std::string& path);
 
 	// run a "/name arg" line from the composer.
 	void run_slash(const std::string& line) {
@@ -732,7 +732,11 @@ struct app::impl {
 		user.convo = convo;
 		user.parent = parent;
 		user.role = role::user;
-		user.content_json = codec::encode_blocks({text_block{text}});
+		// stage any /attach images/pdfs ahead of the prose, then reset the tray.
+		std::vector<content_block> user_blocks = std::move(pending_attach);
+		pending_attach.clear();
+		user_blocks.push_back(text_block{text});
+		user.content_json = codec::encode_blocks(user_blocks);
 		user.created_at = now_ms();
 		if (auto r = db->put_node(user); !r) {
 			status_error = r.error().detail;

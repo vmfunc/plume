@@ -88,6 +88,41 @@ bool app::impl::set_param(const std::string& name, const std::string& arg) {
 	return true;
 }
 
+void app::impl::attach(const std::string& raw) {
+	std::string path = raw;
+	while (!path.empty() && (path.front() == ' ' || path.front() == '"')) path.erase(path.begin());
+	while (!path.empty() && (path.back() == ' ' || path.back() == '"')) path.pop_back();
+	if (path.starts_with("~/")) {
+		if (const char* home = std::getenv("HOME")) path = std::string(home) + path.substr(1);
+	}
+	std::ifstream in(path, std::ios::binary);
+	if (!in) {
+		toast = "can't read " + path;
+		return;
+	}
+	const std::string bytes((std::istreambuf_iterator<char>(in)), {});
+	const std::string data = detail::base64_encode(bytes);
+
+	auto ext = [&] {
+		const auto dot = path.rfind('.');
+		std::string e = dot == std::string::npos ? "" : path.substr(dot + 1);
+		for (char& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		return e;
+	}();
+	if (ext == "pdf") {
+		pending_attach.push_back(document_block{"application/pdf", data, path});
+	} else if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "gif" || ext == "webp") {
+		const std::string mime = "image/" + std::string(ext == "jpg" ? "jpeg" : ext);
+		pending_attach.push_back(image_block{mime, data, path});
+	} else {
+		toast = "unsupported attachment type: ." + ext;
+		return;
+	}
+	const auto slash = path.find_last_of('/');
+	toast = "attached " + (slash == std::string::npos ? path : path.substr(slash + 1)) + " (" +
+	        std::to_string(pending_attach.size()) + " staged)";
+}
+
 std::string app::impl::params_summary() const {
 	const auto& p = cfg.defaults;
 	std::string s = "model " + model_id() + " · max " + std::to_string(p.max_tokens);

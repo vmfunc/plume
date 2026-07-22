@@ -47,6 +47,9 @@ Element app::impl::statusbar() {
 			line.push_back(text(s.text) | color(col(th.p.rose)));
 		}
 	line.push_back(filler());
+	if (!pending_attach.empty())
+		line.push_back(
+		    ui::pill(th, "⧉ " + std::to_string(pending_attach.size()) + " staged", th.p.gold));
 	if (!toast.empty()) line.push_back(text(toast + " ") | color(col(th.p.foam)));
 	if (streaming || compacting.load())
 		line.push_back(text(ui::spinner(now_ms()) + " streaming ") | color(col(th.p.rose)));
@@ -62,15 +65,24 @@ Element app::impl::transcript_view() {
 		auto blocks = codec::decode_blocks(n.content_json);
 		std::string body;
 		std::vector<std::string> thinks;
+		std::vector<std::string> images;  // on-disk paths of attached images
 		if (blocks) {
 			body = message{n.role, *blocks}.plain_text();
-			for (const auto& b : *blocks)
+			for (const auto& b : *blocks) {
 				if (const auto* t = std::get_if<thinking_block>(&b)) thinks.push_back(t->thinking);
+				if (const auto* im = std::get_if<image_block>(&b); im && !im->path.empty())
+					images.push_back(im->path);
+				if (const auto* dc = std::get_if<document_block>(&b); dc && !dc->path.empty())
+					body = "[pdf: " + dc->path + "]\n" + body;
+			}
 		} else {
 			body = n.content_json;
 		}
 		out.push_back(
 		    ui::message_card(th, n.role, body, thinks, show_think, cmp, n.model, n.tokens_out));
+		for (const auto& path : images)
+			if (const img::bitmap* bm = preview(path))
+				out.push_back(hbox({text("  "), ui::image_halfblock(*bm, 44, 14)}));
 	}
 	if (streaming || !live_text.empty() || !live_think.empty())
 		out.push_back(ui::streaming_card(th, live_text, live_think, show_think, cmp, now_ms(),
