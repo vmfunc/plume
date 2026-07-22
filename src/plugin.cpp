@@ -54,11 +54,16 @@ result<std::unique_ptr<plugin_host>> plugin_host::create() {
 	impl* hp = &h;
 
 	plume.set_function("on", [hp](const std::string& ev, sol::protected_function fn) {
-		if (ev == "pre_send") hp->pre_send.push_back(fn);
-		else if (ev == "on_chunk") hp->on_chunk.push_back(fn);
-		else if (ev == "post_receive") hp->post_receive.push_back(fn);
-		else if (ev == "on_key") hp->on_key.push_back(fn);
-		else if (ev == "setup") hp->setup.push_back(fn);
+		if (ev == "pre_send")
+			hp->pre_send.push_back(fn);
+		else if (ev == "on_chunk")
+			hp->on_chunk.push_back(fn);
+		else if (ev == "post_receive")
+			hp->post_receive.push_back(fn);
+		else if (ev == "on_key")
+			hp->on_key.push_back(fn);
+		else if (ev == "setup")
+			hp->setup.push_back(fn);
 	});
 	plume.set_function("command", [hp](const std::string& name, sol::protected_function fn) {
 		hp->commands[name] = fn;
@@ -82,8 +87,7 @@ result<std::unique_ptr<plugin_host>> plugin_host::create() {
 	return host;
 }
 
-void plugin_host::set_model(
-    std::function<std::string(const std::string&, const std::string&)> fn) {
+void plugin_host::set_model(std::function<std::string(const std::string&, const std::string&)> fn) {
 	pimpl_->model_fn = std::move(fn);
 }
 
@@ -112,9 +116,12 @@ result<void> plugin_host::load_all(const std::string& root, const approval_fn& a
 		sol::environment env(h.lua, sol::create, h.lua.globals());
 		for (const auto& cap : man.capabilities) {
 			if (!approve(man.name, cap)) continue;
-			if (cap == "fs") env["io"] = h.io_lib;
-			else if (cap == "exec") env["os"] = h.os_lib;
-			else if (cap == "net") h.net_granted = true;
+			if (cap == "fs")
+				env["io"] = h.io_lib;
+			else if (cap == "exec")
+				env["os"] = h.os_lib;
+			else if (cap == "net")
+				h.net_granted = true;
 		}
 
 		const fs::path script = entry.path() / man.entry;

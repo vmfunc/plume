@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 
+#include <filesystem>
 #include <utility>
 
 #include "plume/codec.hpp"
@@ -118,6 +119,12 @@ constexpr const char* kNodeCols =
 }  // namespace
 
 result<store> store::open(const std::string& path) {
+	// sqlite won't create missing parent directories; do it ourselves.
+	if (const auto parent = std::filesystem::path(path).parent_path(); !parent.empty()) {
+		std::error_code ec;
+		std::filesystem::create_directories(parent, ec);
+	}
+
 	sqlite3* raw = nullptr;
 	const int rc =
 	    sqlite3_open_v2(path.c_str(), &raw, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);

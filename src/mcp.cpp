@@ -126,7 +126,8 @@ struct mcp_client::impl {
 	}
 
 	result<json> rpc(server& s, const std::string& method, const json& params) {
-		return s.cfg.transport == "http" ? rpc_http(s, method, params) : rpc_stdio(s, method, params);
+		return s.cfg.transport == "http" ? rpc_http(s, method, params)
+		                                 : rpc_stdio(s, method, params);
 	}
 };
 
@@ -166,8 +167,9 @@ result<void> mcp_client::connect(const mcp_server_config& cfg) {
 		srv.detail = init.error().detail;
 		return std::unexpected(init.error());
 	}
-	if (srv.proc) write_line(srv.proc->in_fd,
-	                         json{{"jsonrpc", "2.0"}, {"method", "notifications/initialized"}}.dump());
+	if (srv.proc)
+		write_line(srv.proc->in_fd,
+		           json{{"jsonrpc", "2.0"}, {"method", "notifications/initialized"}}.dump());
 	srv.connected = true;
 	return {};
 }
@@ -196,8 +198,8 @@ result<std::string> mcp_client::call(std::string_view server, std::string_view t
 	if (it == pimpl_->servers.end()) return fail(errc::not_found, "no such mcp server");
 	json args = json::parse(args_json, nullptr, false);
 	if (args.is_discarded()) args = json::object();
-	auto res = pimpl_->rpc(it->second, "tools/call",
-	                       {{"name", std::string(tool)}, {"arguments", args}});
+	auto res =
+	    pimpl_->rpc(it->second, "tools/call", {{"name", std::string(tool)}, {"arguments", args}});
 	if (!res) return std::unexpected(res.error());
 
 	std::string text;
@@ -208,8 +210,7 @@ result<std::string> mcp_client::call(std::string_view server, std::string_view t
 
 std::vector<mcp_health> mcp_client::health() const {
 	std::vector<mcp_health> out;
-	for (auto& [name, s] : pimpl_->servers)
-		out.push_back({name, s.connected, s.detail});
+	for (auto& [name, s] : pimpl_->servers) out.push_back({name, s.connected, s.detail});
 	return out;
 }
 

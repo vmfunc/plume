@@ -26,7 +26,9 @@ namespace plume {
 
 namespace {
 
-void err(const std::string& m) { std::fputs(("plume: " + m + "\n").c_str(), stderr); }
+void err(const std::string& m) {
+	std::fputs(("plume: " + m + "\n").c_str(), stderr);
+}
 
 std::string read_stdin() {
 	std::string s;
@@ -55,10 +57,14 @@ result<std::unique_ptr<provider>> provider_from(const config& cfg) {
 	pc.kind = pe->kind;
 	pc.base_url = pe->base_url;
 	pc.credential.value = pe->auth_value;
-	if (pe->auth_source == "key_cmd") pc.credential.kind = auth::source::key_cmd;
-	else if (pe->auth_source == "keychain") pc.credential.kind = auth::source::keychain;
-	else if (pe->auth_source == "inline") pc.credential.kind = auth::source::inline_key;
-	else pc.credential.kind = auth::source::env;
+	if (pe->auth_source == "key_cmd")
+		pc.credential.kind = auth::source::key_cmd;
+	else if (pe->auth_source == "keychain")
+		pc.credential.kind = auth::source::keychain;
+	else if (pe->auth_source == "inline")
+		pc.credential.kind = auth::source::inline_key;
+	else
+		pc.credential.kind = auth::source::env;
 	return make_provider(pc);
 }
 
@@ -155,7 +161,8 @@ int cmd_doctor() {
 
 	const term::capabilities caps = term::probe();
 	std::printf("terminal truecolor=%d kitty=%d sixel=%d osc52=%d italics=%d dark=%d\n",
-	            caps.truecolor, caps.kitty_graphics, caps.sixel, caps.osc52, caps.italics, caps.dark);
+	            caps.truecolor, caps.kitty_graphics, caps.sixel, caps.osc52, caps.italics,
+	            caps.dark);
 
 	if (const provider_entry* pe = cfg->active_provider()) {
 		std::printf("provider %s (%s)\n", cfg->default_provider.c_str(), pe->kind.c_str());
@@ -195,7 +202,8 @@ int cmd_config(const std::vector<std::string>& args) {
 }
 
 int cmd_export(const std::vector<std::string>& args) {
-	if (args.empty()) return err("usage: plume export <conversation-id> [--format md|json|html]"), 1;
+	if (args.empty())
+		return err("usage: plume export <conversation-id> [--format md|json|html]"), 1;
 	auto cfg = load_config(default_config_path());
 	if (!cfg) return err(cfg.error().detail), 1;
 	auto s = store::open(cfg->data_dir + "/plume.sqlite");
@@ -217,12 +225,17 @@ int cmd_export(const std::vector<std::string>& args) {
 
 	if (format == "html") {
 		std::printf("<!doctype html><meta charset=utf-8><title>plume export</title>\n");
-		std::printf("<body style=\"background:#191724;color:#e0def4;font-family:monospace;max-width:48rem;margin:2rem auto\">\n");
+		std::printf(
+		    "<body "
+		    "style=\"background:#191724;color:#e0def4;font-family:monospace;max-width:48rem;margin:"
+		    "2rem auto\">\n");
 		for (const auto& n : *path) {
 			auto blocks = codec::decode_blocks(n.content_json);
 			std::string body = blocks ? message{n.role, *blocks}.plain_text() : n.content_json;
-			std::printf("<section><h3 style=\"color:#9ccfd8\">%s</h3><pre style=\"white-space:pre-wrap\">%s</pre></section>\n",
-			            std::string(to_string(n.role)).c_str(), body.c_str());
+			std::printf(
+			    "<section><h3 style=\"color:#9ccfd8\">%s</h3><pre "
+			    "style=\"white-space:pre-wrap\">%s</pre></section>\n",
+			    std::string(to_string(n.role)).c_str(), body.c_str());
 		}
 		std::printf("</body>\n");
 		return 0;

@@ -24,7 +24,9 @@ namespace fs = std::filesystem;
 
 // claude.ai timestamps are iso-8601 strings; we only need a monotone-ish order,
 // so fall back to a counter when parsing is not worth it.
-std::int64_t seq_from(std::int64_t& counter) { return ++counter; }
+std::int64_t seq_from(std::int64_t& counter) {
+	return ++counter;
+}
 
 class export_backend final : public sync_backend {
    public:
@@ -53,7 +55,10 @@ class export_backend final : public sync_backend {
 
 			auto prior = s.sync_for("claude-export", remote);
 			const bool existed = prior && prior->has_value();
-			if (existed) ++stats.updated; else ++stats.created;
+			if (existed)
+				++stats.updated;
+			else
+				++stats.created;
 
 			convo_id cid{existed ? (*prior)->local_id : new_id("convo")};
 			conversation conv;
@@ -97,7 +102,8 @@ class export_backend final : public sync_backend {
 // wired to the live endpoints in this build (see docs/claude-ai-link.md).
 class live_backend final : public sync_backend {
    public:
-	live_backend(std::string cookie, bool two_way) : cookie_(std::move(cookie)), two_way_(two_way) {}
+	live_backend(std::string cookie, bool two_way)
+	    : cookie_(std::move(cookie)), two_way_(two_way) {}
 
 	std::string_view name() const override { return "claude-live"; }
 
