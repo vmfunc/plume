@@ -30,6 +30,7 @@
 
 #include "composer.hpp"
 #include "plume/codec.hpp"
+#include "plume/mcp.hpp"
 #include "plume/plugin.hpp"
 #include "plume/provider.hpp"
 #include "plume/store.hpp"
@@ -46,7 +47,7 @@ using namespace ftxui;
 
 namespace {
 
-Color col(rgb c) {
+[[maybe_unused]] Color col(rgb c) {  // used by the render TUs, not every includer
 	return Color::RGB(c.r, c.g, c.b);
 }
 
@@ -169,6 +170,8 @@ struct app::impl {
 	std::optional<store> db;
 	std::unique_ptr<provider> prov;
 	std::unique_ptr<plugin_host> plugins;
+	std::unique_ptr<mcp_client> mcp;
+	std::vector<mcp_tool> mcp_tools;
 
 	ScreenInteractive screen = ScreenInteractive::Fullscreen();
 
@@ -182,6 +185,7 @@ struct app::impl {
 	std::string live_text;
 	std::string live_think;
 	bool show_think = true;
+	bool truncated = false;  // last turn hit max_tokens; /continue resumes
 	std::string status_error;
 	std::string toast;  // a transient note in the statusbar (command results)
 	usage last_usage;
@@ -200,6 +204,16 @@ struct app::impl {
 	std::string convo_title = "first light";
 	std::int64_t context_window = 200000;
 
+	// the mcp tool-use loop. when an assistant turn asks for tools, each request
+	// is queued and resolved against the server's approval policy (ask/allowlist/
+	// yolo); results are gathered into a tool_result turn that continues the chat.
+	struct pending_tool {
+		std::string server, name, id, args_json, policy;
+	};
+	std::vector<pending_tool> tool_queue;
+	std::vector<tool_result_block> tool_results;
+	node_id tool_parent;  // the assistant turn that requested the tools
+
 	// parallel spawn (the loom): k branches streaming at once, in columns.
 	bool spawning = false;
 	bool spawn_done = false;
@@ -208,8 +222,8 @@ struct app::impl {
 	int spawn_pending = 0;
 
 	// overlays: the command palette, the cheatsheet, the conversation picker,
-	// and search. only one is up at a time.
-	enum class overlay : std::uint8_t { none, palette, cheatsheet, picker, search };
+	// search, and the mcp tool-approval prompt. only one is up at a time.
+	enum class overlay : std::uint8_t { none, palette, cheatsheet, picker, search, tool_approve };
 	overlay ov = overlay::none;
 	std::string ov_filter;
 	int ov_sel = 0;
@@ -543,45 +557,42 @@ struct app::impl {
 		return items;
 	}
 
-	Element overlay_view() {
-		if (ov == overlay::cheatsheet) {
-			auto row = [&](const std::string& k, const std::string& d) {
-				return hbox({text(k) | color(col(th.p.foam)) | size(WIDTH, EQUAL, 14),
-				             text(d) | color(col(th.p.subtle))});
-			};
-			return ui::overlay(th, "keys",
-			                   vbox({row("ctrl-k", "command palette"),
-			                         row("ctrl-p", "conversation picker"),
-			                         row("ctrl-f", "search everything"),
-			                         row("ctrl-w", "open the loom"),
-			                         row("ctrl-e", "composer to $EDITOR"),
-			                         row("/", "slash command (insert)"),
-			                         row("? ", "this cheatsheet (normal)"),
-			                         row("esc", "stop / close"),
-			                         text(""),
-			                         text("weave") | color(col(th.p.gold)),
-			                         row("hjkl", "move"),
-			                         row("enter", "adopt branch"),
-			                         row("s", "spawn 3 branches"),
-			                         row("r", "regenerate"),
-			                         row("e", "edit + refork"),
-			                         row("y", "yank code"),
-			                         row("t", "toggle thinking"),
-			                         row("m", "bookmark"),
-			                         row("g / x", "graft / export dot"),
-			                         row("p / P", "prune / restore"),
-			                         text(""),
-			                         text("composer is vim-modal — i to insert, esc for normal") |
-			                             color(col(th.p.muted)) | dim}));
-		}
-		const auto items = overlay_items();
-		const std::string title = ov == overlay::palette
-		                              ? "commands"
-		                              : (ov == overlay::picker ? "conversations" : "search");
-		return ui::overlay(th, title, ui::pick_list(th, ov_filter, items, ov_sel));
-	}
+	Element overlay_view();  // defined in app_render.cpp
 
 	bool handle_overlay(const Event& e) {
+		if (ov == overlay::tool_approve) {
+			if (tool_queue.empty()) {
+				ov = overlay::none;
+				return true;
+			}
+			const pending_tool pt = tool_queue.front();
+			auto resolve = [&](bool approve) {
+				if (approve)
+					run_tool(pt);
+				else
+					tool_results.push_back(tool_result_block{pt.id, "denied by user", true});
+				tool_queue.erase(tool_queue.begin());
+				ov = overlay::none;
+				advance_tools();  // next tool, or continue the turn
+			};
+			if (e == Event::Character("a") || e == Event::Return) return resolve(true), true;
+			if (e == Event::Character("A")) {  // remember this tool on its server
+				for (auto& sv : cfg.mcp)
+					if (sv.name == pt.server) sv.allow.push_back(pt.name);
+				persist_config();
+				return resolve(true), true;
+			}
+			if (e == Event::Character("d")) return resolve(false), true;
+			if (e == Event::Escape) {  // deny this and every queued tool at once
+				for (auto& q : tool_queue)
+					tool_results.push_back(tool_result_block{q.id, "denied by user", true});
+				tool_queue.clear();
+				ov = overlay::none;
+				submit_tool_results();
+				return true;
+			}
+			return true;  // swallow other keys while the prompt is up
+		}
 		if (e == Event::Escape) {
 			ov = overlay::none;
 			return true;
@@ -723,6 +734,7 @@ struct app::impl {
 			auto blocks = codec::decode_blocks(transcript[i].content_json);
 			if (blocks) req.messages.push_back(message{transcript[i].role, *blocks});
 		}
+		req.tools = tool_defs();
 		req.cache_prefix = true;
 
 		live_text.clear();
@@ -787,7 +799,40 @@ struct app::impl {
 		live_text.clear();
 		live_think.clear();
 		reload_transcript();
+
+		// a truncated turn can be resumed with /continue.
+		truncated = out && out->stop_reason == "max_tokens";
+		if (truncated) toast = "response truncated, /continue to resume";
+
+		// if the assistant asked for tools, resolve them and loop.
+		if (out) {
+			for (const auto& b : out->reply.blocks)
+				if (const auto* tu = std::get_if<tool_use_block>(&b)) {
+					pending_tool pt;
+					pt.id = tu->id;
+					pt.name = tu->name;
+					pt.args_json = tu->input_json.empty() ? "{}" : tu->input_json;
+					for (const auto& mt : mcp_tools)
+						if (mt.name == tu->name) pt.server = mt.server;
+					for (const auto& sv : cfg.mcp)
+						if (sv.name == pt.server) pt.policy = sv.approval;
+					tool_queue.push_back(std::move(pt));
+				}
+			if (!tool_queue.empty()) {
+				tool_parent = reply.id;
+				advance_tools();
+			}
+		}
 	}
+
+	// -- mcp tool-use loop (defined in app_tools.cpp) -------------------------
+	std::vector<tool_def> tool_defs() const;
+	bool allowed(const pending_tool&) const;
+	void advance_tools();
+	void run_tool(const pending_tool&);
+	void submit_tool_results();
+	void stream_reply(const node_id& parent);
+	Element tool_args_table(const std::string& args_json) const;
 
 	// adopt the wizard's choices: persist the config, reload the theme, build the
 	// provider, and import a claude.ai export if one was named.

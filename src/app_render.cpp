@@ -156,4 +156,57 @@ Element app::impl::spawn_view() {
 	       flex;
 }
 
+Element app::impl::overlay_view() {
+	if (ov == overlay::tool_approve && !tool_queue.empty()) {
+		const auto& pt = tool_queue.front();
+		const std::string extra =
+		    tool_queue.size() > 1 ? "  (+" + std::to_string(tool_queue.size() - 1) + " more)" : "";
+		return ui::overlay(
+		    th, "tool call" + extra,
+		    vbox({hbox({text("server  ") | color(col(th.p.muted)),
+		                text(pt.server.empty() ? "(unknown)" : pt.server) | color(col(th.p.foam))}),
+		          hbox({text("tool    ") | color(col(th.p.muted)),
+		                text(pt.name) | color(col(th.p.iris)) | bold}),
+		          separator() | color(col(th.p.hl_med)),
+		          text("arguments") | color(col(th.p.gold)) | dim, tool_args_table(pt.args_json),
+		          text(""),
+		          text("a approve · d deny · A always allow · esc deny all") |
+		              color(col(th.p.subtle)) | dim}));
+	}
+	if (ov == overlay::cheatsheet) {
+		auto row = [&](const std::string& k, const std::string& d) {
+			return hbox({text(k) | color(col(th.p.foam)) | size(WIDTH, EQUAL, 14),
+			             text(d) | color(col(th.p.subtle))});
+		};
+		return ui::overlay(th, "keys",
+		                   vbox({row("ctrl-k", "command palette"),
+		                         row("ctrl-p", "conversation picker"),
+		                         row("ctrl-f", "search everything"),
+		                         row("ctrl-w", "open the loom"),
+		                         row("ctrl-e", "composer to $EDITOR"),
+		                         row("/", "slash command (insert)"),
+		                         row("? ", "this cheatsheet (normal)"),
+		                         row("esc", "stop / close"),
+		                         text(""),
+		                         text("weave") | color(col(th.p.gold)),
+		                         row("hjkl", "move"),
+		                         row("enter", "adopt branch"),
+		                         row("s", "spawn 3 branches"),
+		                         row("r", "regenerate"),
+		                         row("e", "edit + refork"),
+		                         row("y", "yank code"),
+		                         row("t", "toggle thinking"),
+		                         row("m", "bookmark"),
+		                         row("g / x", "graft / export dot"),
+		                         row("p / P", "prune / restore"),
+		                         text(""),
+		                         text("composer is vim-modal — i to insert, esc for normal") |
+		                             color(col(th.p.muted)) | dim}));
+	}
+	const auto items = overlay_items();
+	const std::string title =
+	    ov == overlay::palette ? "commands" : (ov == overlay::picker ? "conversations" : "search");
+	return ui::overlay(th, title, ui::pick_list(th, ov_filter, items, ov_sel));
+}
+
 }  // namespace plume

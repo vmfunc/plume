@@ -105,6 +105,16 @@ result<app> app::create(config cfg) {
 		static_cast<void>(s.plugins->load_all(s.cfg.config_dir + "/plugins", approve));
 	}
 
+	// mcp: connect every declared server and surface its tools to the model. a
+	// server that fails to start is logged and skipped, never fatal.
+	if (!s.cfg.mcp.empty()) {
+		if (auto mc = mcp_client::create()) {
+			s.mcp = std::move(*mc);
+			for (const auto& sv : s.cfg.mcp) static_cast<void>(s.mcp->connect(sv));
+			if (auto ts = s.mcp->tools()) s.mcp_tools = std::move(*ts);
+		}
+	}
+
 	// nothing configured (and no env key), or a forced `plume setup`: run the wizard.
 	if ((!s.prov && !std::getenv("PLUME_MOCK")) || std::getenv("PLUME_WIZARD"))
 		s.wiz.begin(s.cfg, s.caps, now_ms());
