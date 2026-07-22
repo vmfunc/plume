@@ -14,9 +14,9 @@ namespace {
 fs::path make_plugin(const std::string& name, const std::string& caps, const std::string& lua) {
 	fs::path root = fs::temp_directory_path() / ("plume-plug-" + new_id("t"));
 	fs::create_directories(root / name);
-	std::ofstream(root / name / "plugin.toml") << "name = \"" << name << "\"\nversion = \"1\"\n"
-	                                            << "entry = \"init.lua\"\ncapabilities = " << caps
-	                                            << "\n";
+	std::ofstream(root / name / "plugin.toml")
+	    << "name = \"" << name << "\"\nversion = \"1\"\n"
+	    << "entry = \"init.lua\"\ncapabilities = " << caps << "\n";
 	std::ofstream(root / name / "init.lua") << lua;
 	return root;
 }
@@ -58,7 +58,8 @@ TEST_CASE("a net-approved plugin can mutate the outgoing message via a model") {
 	auto host = plugin_host::create();
 	REQUIRE(host.has_value());
 	// the host injects the model; the plugin only sees plume.model.complete.
-	(*host)->set_model([](const std::string& prompt, const std::string&) { return "bonjour: " + prompt; });
+	(*host)->set_model(
+	    [](const std::string& prompt, const std::string&) { return "bonjour: " + prompt; });
 	REQUIRE((*host)->load_all(root.string(), grant({"net"})).has_value());
 
 	CHECK((*host)->run_pre_send("hello") == "bonjour: hello");

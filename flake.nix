@@ -62,6 +62,7 @@
           apps.default = {
             type = "app";
             program = "${pkgs.plume}/bin/plume";
+            meta.description = "a quill for terminals";
           };
 
           devShells.default = pkgs.mkShell {

@@ -30,7 +30,8 @@ fs::path make_export() {
 
 TEST_CASE("claude.ai export imports and re-import updates rather than duplicates") {
 	fs::path exp = make_export();
-	std::string db = (fs::temp_directory_path() / ("plume-syncdb-" + new_id("t") + ".sqlite")).string();
+	std::string db =
+	    (fs::temp_directory_path() / ("plume-syncdb-" + new_id("t") + ".sqlite")).string();
 	{
 		auto s = store::open(db);
 		REQUIRE(s.has_value());
