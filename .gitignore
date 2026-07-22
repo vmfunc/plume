@@ -1,0 +1,26 @@
+# build prompt and generated reference docs stay local
+PROMPT.md
+docs/
+
+# build output
+/build/
+/build-*/
+result
+result-*
+*.o
+*.a
+*.so
+compile_commands.json
+.cache/
+
+# local state written during dev runs
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.log
+
+# editor
+.direnv/
+.vscode/
+.idea/
+*.swp

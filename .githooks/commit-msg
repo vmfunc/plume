@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# lowercase imperative, short subject, no ai attribution anywhere in the message.
+set -euo pipefail
+
+msg_file="$1"
+subject=$(head -1 "$msg_file")
+
+if grep -qiE 'co-authored-by:.*(claude|anthropic|assistant)|generated with' "$msg_file"; then
+	echo "commit-msg: ai attribution is not allowed" >&2
+	exit 1
+fi
+
+if [ "${#subject}" -gt 65 ]; then
+	echo "commit-msg: subject is ${#subject} chars, keep it <= 65" >&2
+	exit 1
+fi

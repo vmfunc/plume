@@ -1,0 +1,22 @@
+---
+# a lean set: real bug categories and the readability checks that catch the
+# mistakes this codebase actually makes. naming is enforced by review, not by
+# clang-tidy, so those checks stay off to avoid noise on third-party idioms.
+Checks: >
+  bugprone-*,
+  performance-*,
+  portability-*,
+  clang-analyzer-*,
+  cppcoreguidelines-pro-type-member-init,
+  cppcoreguidelines-slicing,
+  misc-const-correctness,
+  modernize-use-nullptr,
+  modernize-use-override,
+  readability-container-size-empty,
+  readability-redundant-*,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -performance-avoid-endl
+WarningsAsErrors: ''
+HeaderFilterRegex: 'include/plume/.*'
+FormatStyle: file

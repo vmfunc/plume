@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# refuse to track the build prompt, the generated docs, or same-day planning
+# markdown — a repo that ships its own prompt is the loudest tell there is.
+set -euo pipefail
+
+staged=$(git diff --cached --name-only)
+
+blocked=$(echo "$staged" | grep -E '^(PROMPT\.md|docs/|IMPLEMENTATION_PLAN\.md|NOTES\.md|HANDOFF\.md|TASKS\.md)' || true)
+if [ -n "$blocked" ]; then
+	echo "pre-commit: refusing to commit local-only files:" >&2
+	echo "$blocked" >&2
+	exit 1
+fi
+
+# and never let an ai-attribution trailer slip into a tracked file.
+if echo "$staged" | grep -qE '\.(cpp|hpp|md|toml|nix|lua)$'; then
+	if git diff --cached | grep -qiE 'co-authored-by:.*(claude|anthropic|assistant)'; then
+		echo "pre-commit: ai attribution is not allowed" >&2
+		exit 1
+	fi
+fi
