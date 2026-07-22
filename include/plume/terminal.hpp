@@ -13,7 +13,7 @@
 namespace plume::term {
 
 // how inline images can be drawn, best first.
-enum class image_mode { kitty_placeholder, sixel, halfblock };
+enum class image_mode : std::uint8_t { kitty_placeholder, sixel, halfblock };
 
 struct capabilities {
 	bool truecolor = false;

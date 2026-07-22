@@ -3,13 +3,14 @@
 // module returns one of these instead of throwing across the seam.
 #pragma once
 
+#include <cstdint>
 #include <expected>
 #include <string>
 #include <utility>
 
 namespace plume {
 
-enum class errc {
+enum class errc : std::uint8_t {
 	network,      // socket died, dns, tls, timeout
 	http_status,  // provider returned a non-2xx; detail holds the body
 	parse,        // malformed sse, half a json object, bad wire shape
