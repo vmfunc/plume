@@ -25,9 +25,12 @@
 #include "plume/plugin.hpp"
 #include "plume/provider.hpp"
 #include "plume/store.hpp"
+#include "plume/sync.hpp"
 #include "plume/terminal.hpp"
 #include "plume/theme.hpp"
 #include "plume/weave.hpp"
+#include "ui.hpp"
+#include "wizard.hpp"
 
 namespace plume {
 
@@ -42,6 +45,22 @@ Color col(rgb c) {
 std::int64_t now_ms() {
 	using namespace std::chrono;
 	return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+provider_config pc_from(const provider_entry& pe) {
+	provider_config pc;
+	pc.kind = pe.kind;
+	pc.base_url = pe.base_url;
+	pc.credential.value = pe.auth_value;
+	if (pe.auth_source == "key_cmd")
+		pc.credential.kind = auth::source::key_cmd;
+	else if (pe.auth_source == "keychain")
+		pc.credential.kind = auth::source::keychain;
+	else if (pe.auth_source == "inline")
+		pc.credential.kind = auth::source::inline_key;
+	else
+		pc.credential.kind = auth::source::env;
+	return pc;
 }
 
 }  // namespace
@@ -81,13 +100,27 @@ struct app::impl {
 	node_id graft_source;    // set by the first 'g', consumed by the second
 	std::string weave_note;  // transient feedback in the weave detail line
 
+	wizard wiz;
+	std::string convo_title = "first light";
+	std::int64_t context_window = 200000;
+
+	// the animation heartbeat: posts a frame while something is moving, unless
+	// motion is off.
+	std::thread ticker;
+	std::atomic<bool> alive{true};
+
 	explicit impl(config c) : cfg(std::move(c)) {}
 	~impl() {
 		stop_flag = true;
+		alive = false;
 		if (worker.joinable()) worker.join();
+		if (ticker.joinable()) ticker.join();
 	}
 
 	bool has_provider() const { return prov != nullptr; }
+	bool reduce_motion() const { return cfg.ui.reduce_motion; }
+	bool compact() const { return cfg.ui.density == "compact"; }
+	bool animating() const { return streaming.load() || wiz.animating(); }
 
 	std::string model_id() const {
 		const provider_entry* pe = cfg.active_provider();
@@ -206,6 +239,33 @@ struct app::impl {
 		reload_transcript();
 	}
 
+	// adopt the wizard's choices: persist the config, reload the theme, build the
+	// provider, and import a claude.ai export if one was named.
+	void apply_wizard() {
+		cfg = wiz.result;
+		static_cast<void>(save_config(cfg, cfg.config_dir + "/config.toml"));
+
+		const bool dark = caps.background ? caps.dark : true;
+		if (auto t = resolve_theme(cfg.ui.theme, cfg.config_dir + "/themes", dark)) th = *t;
+
+		if (std::getenv("PLUME_MOCK"))
+			prov = make_mock();
+		else if (const provider_entry* pe = cfg.active_provider())
+			if (auto p = make_provider(pc_from(*pe))) prov = std::move(*p);
+
+		if (!wiz.import_path.empty() && db) {
+			if (auto backend = open_export(wiz.import_path))
+				static_cast<void>((*backend)->import_into(*db));
+			if (auto list = db->conversations(); list && !list->empty()) {
+				convo = list->front().id;
+				convo_title = list->front().title;
+			}
+			reload_transcript();
+		}
+		wiz.active = false;
+		wiz.finished = false;
+	}
+
 	// -- rendering ------------------------------------------------------------
 
 	double cost_of(const usage& u) const {
@@ -217,63 +277,74 @@ struct app::impl {
 		return 0.0;
 	}
 
-	Element statusline() {
+	Element header() {
+		return vbox({
+		    hbox({text(" plume ") | bold | color(col(th.p.base)) | bgcolor(col(th.p.iris)),
+		          text("  " + convo_title) | color(col(th.p.subtle)), filler(),
+		          text(in_weave ? "weave " : "") | color(col(th.p.foam)) | dim}),
+		    separator() | color(col(th.p.hl_med)),
+		});
+	}
+
+	Element statusbar() {
 		usage tot = last_usage;
 		std::string cost = std::to_string(cost_of(tot));
 		cost = cost.substr(0, cost.find('.') + 5);
-		auto seg = [&](const std::string& s, rgb c) {
-			return hbox({text(" " + s + " ") | color(col(c))});
-		};
+		const float frac =
+		    context_window > 0 ? static_cast<float>(tot.input) / context_window : 0.f;
+		auto dot = [&] { return text(" · ") | color(col(th.p.muted)); };
 		Elements line = {
-		    seg(model_id(), th.p.iris),
-		    text("· ") | color(col(th.p.muted)),
-		    seg("in " + std::to_string(tot.input) + " out " + std::to_string(tot.output),
-		        th.p.foam),
-		    text("· ") | color(col(th.p.muted)),
-		    seg("$" + cost, th.p.gold),
-		    text("· ") | color(col(th.p.muted)),
-		    seg(std::to_string(ttft_ms) + "ms", th.p.pine),
+		    ui::pill(th, model_id(), th.p.iris),
+		    text(" "),
+		    ui::meter(th, frac, 12),
+		    dot(),
+		    text("in " + std::to_string(tot.input) + " out " + std::to_string(tot.output)) |
+		        color(col(th.p.foam)),
+		    dot(),
+		    text("$" + cost) | color(col(th.p.gold)),
+		    dot(),
+		    text(std::to_string(ttft_ms) + "ms") | color(col(th.p.pine)),
 		};
-		// statusline segments contributed by plugins.
 		if (plugins)
-			for (const auto& s : plugins->statusline()) line.push_back(seg(s.text, th.p.rose));
+			for (const auto& s : plugins->statusline()) {
+				line.push_back(dot());
+				line.push_back(text(s.text) | color(col(th.p.rose)));
+			}
 		line.push_back(filler());
-		line.push_back(streaming ? text("streaming ") | color(col(th.p.rose)) | blink : text(""));
-		line.push_back(text(in_weave ? "weave " : "chat ") | color(col(th.p.subtle)));
+		if (streaming)
+			line.push_back(text(ui::spinner(now_ms()) + " streaming ") | color(col(th.p.rose)));
+		line.push_back(text(in_weave ? " weave " : " chat ") | color(col(th.p.subtle)) |
+		               bgcolor(col(th.p.overlay)));
 		return hbox(std::move(line)) | bgcolor(col(th.p.surface));
-	}
-
-	Element render_node(const node& n) {
-		auto blocks = codec::decode_blocks(n.content_json);
-		std::string body = blocks ? message{n.role, *blocks}.plain_text() : n.content_json;
-		rgb accent = n.role == role::user ? th.p.pine : th.p.foam;
-		Elements lines;
-		lines.push_back(text(std::string(to_string(n.role))) | bold | color(col(accent)));
-		lines.push_back(paragraph(body) | color(col(th.p.text)));
-		if (blocks)
-			for (const auto& b : *blocks)
-				if (const auto* th_blk = std::get_if<thinking_block>(&b); th_blk && show_think)
-					lines.push_back(paragraph("thinking: " + th_blk->thinking) |
-					                color(col(th.p.muted)) | dim);
-		return vbox(std::move(lines)) | border | color(col(th.p.hl_med));
 	}
 
 	Element transcript_view() {
 		Elements out;
-		for (const auto& n : transcript) out.push_back(render_node(n));
-		if (streaming || !live_text.empty() || !live_think.empty()) {
-			Elements live;
-			live.push_back(text("assistant") | bold | color(col(th.p.foam)));
-			if (show_think && !live_think.empty())
-				live.push_back(paragraph("thinking: " + live_think) | color(col(th.p.muted)) | dim);
-			live.push_back(paragraph(live_text + (streaming ? "▌" : "")) | color(col(th.p.text)));
-			out.push_back(vbox(std::move(live)) | border | color(col(th.p.iris)));
+		const bool cmp = compact();
+		for (const auto& n : transcript) {
+			auto blocks = codec::decode_blocks(n.content_json);
+			std::string body;
+			std::vector<std::string> thinks;
+			if (blocks) {
+				body = message{n.role, *blocks}.plain_text();
+				for (const auto& b : *blocks)
+					if (const auto* t = std::get_if<thinking_block>(&b))
+						thinks.push_back(t->thinking);
+			} else {
+				body = n.content_json;
+			}
+			out.push_back(
+			    ui::message_card(th, n.role, body, thinks, show_think, cmp, n.model, n.tokens_out));
 		}
+		if (streaming || !live_text.empty() || !live_think.empty())
+			out.push_back(ui::streaming_card(th, live_text, live_think, show_think, cmp, now_ms(),
+			                                 reduce_motion()));
 		if (out.empty())
-			out.push_back(text("plume is ready. ? for keys, / to talk.") | color(col(th.p.muted)) |
-			              center);
-		if (!status_error.empty())
-			out.push_back(text("error: " + status_error) | color(col(th.p.love)));
+			out.push_back(vbox({filler(), text("a blank page.") | color(col(th.p.subtle)) | center,
+			                    text("type below to begin · ctrl-w to weave") |
+			                        color(col(th.p.muted)) | dim | center,
+			                    filler()}));
+		if (!status_error.empty()) out.push_back(text("  " + status_error) | color(col(th.p.love)));
 		out.back() = out.back() | focus;  // keep the newest turn in view
 		return vbox(std::move(out)) | yframe | flex;
 	}
@@ -288,29 +359,45 @@ struct app::impl {
 				const auto& tn = v->nodes.at(id);
 				weave_order.push_back(id);
 				const int i = static_cast<int>(weave_order.size()) - 1;
-				std::string indent(static_cast<std::size_t>(tn.depth) * 2, ' ');
-				std::string label = codec::read_str(tn.data.params_json, "label").value_or("");
-				bool mark = codec::read_bool(tn.data.params_json, "bookmark").value_or(false);
-				rgb c = tn.data.role == role::user ? th.p.pine : th.p.foam;
-				std::string line =
-				    indent + (mark ? "★ " : "• ") + std::string(to_string(tn.data.role));
-				if (!label.empty()) line += " [" + label + "]";
-				Element e = text(line) | color(col(c));
-				if (i == weave_cursor) e = e | bgcolor(col(th.p.hl_high)) | bold | focus;
+				const std::string label =
+				    codec::read_str(tn.data.params_json, "label").value_or("");
+				const bool mark = codec::read_bool(tn.data.params_json, "bookmark").value_or(false);
+				const bool is_source = !graft_source.empty() && id == graft_source;
+				const rgb c = tn.data.role == role::user ? th.p.pine : th.p.iris;
+				std::string indent;
+				for (int d = 0; d < tn.depth; ++d) indent += "  ";
+				const std::string glyph = tn.data.role == role::user ? "◇ " : "◆ ";
+				Elements cells = {
+				    text(indent), text(mark ? "★ " : "") | color(col(th.p.gold)),
+				    text(glyph) | color(col(c)),
+				    text(std::string(to_string(tn.data.role))) | color(col(th.p.text))};
+				if (!label.empty())
+					cells.push_back(text("  " + label) | color(col(th.p.foam)) | italic);
+				if (is_source)
+					cells.push_back(text("  graft source") | color(col(th.p.gold)) | dim);
+				Element e = hbox(std::move(cells));
+				if (i == weave_cursor)
+					e = hbox({text("▏") | color(col(th.p.iris)), e}) | bgcolor(col(th.p.hl_low)) |
+					    focus;
+				else
+					e = hbox({text(" "), e});
 				rows.push_back(e);
 			}
 		}
-		if (rows.empty()) rows.push_back(text("(empty)") | color(col(th.p.muted)));
+		if (rows.empty()) rows.push_back(text("  the tree is empty") | color(col(th.p.muted)));
 		Element tree = vbox(std::move(rows)) | yframe | flex;
 		Element help = text(
 		                   "hjkl move · enter adopt · p prune · P restore · m bookmark · g graft · "
 		                   "x export dot · ctrl-w back") |
-		               color(col(th.p.subtle));
+		               color(col(th.p.subtle)) | dim;
 		Elements bottom = {help};
-		if (!weave_note.empty()) bottom.push_back(text(weave_note) | color(col(th.p.gold)));
-		return vbox({text("weave") | bold | color(col(th.p.iris)), separator(), tree, separator(),
-		             vbox(std::move(bottom))}) |
-		       border | color(col(th.p.hl_med)) | flex;
+		if (!weave_note.empty()) bottom.push_back(text("  " + weave_note) | color(col(th.p.gold)));
+		return vbox({hbox({text(" the loom ") | bold | color(col(th.p.base)) |
+		                       bgcolor(col(th.p.iris)),
+		                   filler()}),
+		             separator() | color(col(th.p.hl_med)), tree,
+		             separator() | color(col(th.p.hl_med)), vbox(std::move(bottom))}) |
+		       flex;
 	}
 
 	node_id weave_selected() const {
@@ -392,6 +479,7 @@ result<app> app::create(config cfg) {
 	// resolve or create the working conversation.
 	if (auto list = s.db->conversations(); list && !list->empty()) {
 		s.convo = list->front().id;
+		s.convo_title = list->front().title;
 	} else {
 		conversation c;
 		c.id = convo_id{new_id("convo")};
@@ -408,17 +496,7 @@ result<app> app::create(config cfg) {
 		s.cfg.default_provider = "mock";
 		s.cfg.providers["mock"] = {"mock", "", "env", "", "mock-model"};
 	} else if (const provider_entry* pe = s.cfg.active_provider()) {
-		provider_config pc;
-		pc.kind = pe->kind;
-		pc.base_url = pe->base_url;
-		pc.credential.value = pe->auth_value;
-		if (pe->auth_source == "key_cmd")
-			pc.credential.kind = auth::source::key_cmd;
-		else if (pe->auth_source == "keychain")
-			pc.credential.kind = auth::source::keychain;
-		else if (pe->auth_source == "inline")
-			pc.credential.kind = auth::source::inline_key;
-		if (auto p = make_provider(pc)) s.prov = std::move(*p);
+		if (auto p = make_provider(pc_from(*pe))) s.prov = std::move(*p);
 	} else if (const char* key = std::getenv("ANTHROPIC_API_KEY"); key && *key) {
 		// zero-config: an env key drops you straight into a working chat.
 		provider_config pc;
@@ -475,60 +553,73 @@ result<app> app::create(config cfg) {
 		static_cast<void>(s.plugins->load_all(s.cfg.config_dir + "/plugins", approve));
 	}
 
+	// nothing configured (and no env key), or a forced `plume setup`: run the wizard.
+	if ((!s.prov && !std::getenv("PLUME_MOCK")) || std::getenv("PLUME_WIZARD"))
+		s.wiz.begin(s.cfg, s.caps, now_ms());
+
 	return a;
 }
 
 int app::run() {
 	impl& s = *pimpl_;
 
-	auto composer = Input(&s.composer, "type / to talk, ? for keys");
-	auto root = Renderer(composer, [&] {
-		Element body = s.in_weave ? s.weave_view() : s.transcript_view();
-		Element wizard;
-		if (!s.has_provider()) {
-			wizard = vbox({
-			             text("plume — first run") | bold | color(col(s.th.p.iris)),
-			             separator(),
-			             text("terminal report card") | color(col(s.th.p.gold)),
-			             text("  truecolor  " + std::string(s.caps.truecolor ? "yes" : "no")),
-			             text("  kitty gfx  " + std::string(s.caps.kitty_graphics ? "yes" : "no")),
-			             text("  sixel      " + std::string(s.caps.sixel ? "yes" : "no")),
-			             text("  osc52      " + std::string(s.caps.osc52 ? "yes" : "no")),
-			             separator(),
-			             text("no provider configured.") | color(col(s.th.p.love)),
-			             text("set ANTHROPIC_API_KEY and restart, or edit "),
-			             text("  " + s.cfg.config_dir + "/config.toml") | color(col(s.th.p.foam)),
-			             text("press q to quit."),
-			         }) |
-			         border | center;
+	// the animation heartbeat: a frame every 60ms while something moves, unless
+	// motion is off. idle chat costs nothing.
+	s.ticker = std::thread([&s] {
+		while (s.alive.load()) {
+			std::this_thread::sleep_for(std::chrono::milliseconds(60));
+			if (s.alive.load() && s.animating() && !s.reduce_motion())
+				s.screen.PostEvent(Event::Custom);
 		}
-		Element main = wizard ? wizard : body;
+	});
+
+	auto composer = Input(&s.composer, "type to talk, ctrl-w to weave");
+	auto root = Renderer(composer, [&] {
+		if (s.wiz.active) {
+			const bool dark = s.caps.background ? s.caps.dark : true;
+			return s.wiz.render(s.wiz.preview_theme(dark), now_ms());
+		}
+		Element body = s.in_weave ? s.weave_view() : s.transcript_view();
 		return vbox({
-		    s.statusline(),
-		    main | flex,
-		    hbox({text("› ") | color(col(s.th.p.iris)), composer->Render() | flex}) |
+		    s.header(),
+		    body | flex,
+		    hbox({text(s.in_weave ? "   " : " › ") | color(col(s.th.p.iris)) | bold,
+		          composer->Render() | flex}) |
 		        bgcolor(col(s.th.p.surface)),
+		    s.statusbar(),
 		});
 	});
 
 	auto with_keys = CatchEvent(root, [&](const Event& e) {
-		if (e == Event::Custom) return true;  // a worker asked for a frame
-		// q quits only when not typing into the composer (weave view or wizard).
-		const bool typing = s.has_provider() && !s.in_weave;
-		if (e == Event::CtrlC || (!typing && e == Event::Character("q"))) {
+		if (e == Event::CtrlC) {
 			s.screen.ExitLoopClosure()();
 			return true;
 		}
-		if (e == Event::CtrlW && s.has_provider()) {
+		// the wizard owns the keyboard while it runs.
+		if (s.wiz.active) {
+			const bool handled = s.wiz.handle(e, s.screen);
+			if (s.wiz.finished) s.apply_wizard();
+			return handled;
+		}
+		if (e == Event::Custom) return true;  // a worker asked for a frame
+		if (e == Event::CtrlW) {
 			s.in_weave = !s.in_weave;
+			s.weave_note.clear();
 			return true;
 		}
 		if (e == Event::Escape && s.streaming) {
 			s.stop_flag = true;
 			return true;
 		}
-		if (s.in_weave) return s.handle_weave(e);
-		// chat mode: enter sends.
+		// the weave view fully owns the keyboard so keys never leak to the composer.
+		if (s.in_weave) {
+			if (e == Event::Character("q")) {
+				s.screen.ExitLoopClosure()();
+				return true;
+			}
+			s.handle_weave(e);
+			return true;
+		}
 		if (e == Event::Return && !s.composer.empty()) {
 			const std::string t = s.composer;
 			s.composer.clear();

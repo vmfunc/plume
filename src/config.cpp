@@ -2,6 +2,8 @@
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 #include <toml++/toml.hpp>
 
@@ -24,6 +26,25 @@ thinking_mode thinking_from(std::string_view s) {
 	if (s == "adaptive") return thinking_mode::adaptive;
 	if (s == "budget") return thinking_mode::budget;
 	return thinking_mode::off;
+}
+
+const char* thinking_to(thinking_mode m) {
+	switch (m) {
+		case thinking_mode::adaptive: return "adaptive";
+		case thinking_mode::budget: return "budget";
+		case thinking_mode::off: return "off";
+	}
+	return "off";
+}
+
+std::string quote(std::string_view s) {
+	std::string out = "\"";
+	for (char c : s) {
+		if (c == '"' || c == '\\') out.push_back('\\');
+		out.push_back(c);
+	}
+	out.push_back('"');
+	return out;
 }
 
 }  // namespace
@@ -155,6 +176,69 @@ result<config> load_config(const std::string& path) {
 	}
 
 	return c;
+}
+
+result<void> save_config(const config& c, const std::string& path) {
+	std::ostringstream o;
+	o << "# plume config. every option is documented in docs/config.md.\n";
+	o << "# hot-reloaded on save.\n\n";
+
+	o << "[ui]\n";
+	o << "theme = " << quote(c.ui.theme) << "\n";
+	o << "density = " << quote(c.ui.density) << "\n";
+	o << "reduce_motion = " << (c.ui.reduce_motion ? "true" : "false") << "\n";
+	o << "zen = " << (c.ui.zen ? "true" : "false") << "\n\n";
+
+	o << "[keys]\n";
+	o << "preset = " << quote(c.keys.preset) << "\n\n";
+
+	if (!c.default_provider.empty())
+		o << "default_provider = " << quote(c.default_provider) << "\n";
+	o << "notify = " << quote(c.notify) << "\n\n";
+
+	for (const auto& [name, p] : c.providers) {
+		o << "[providers." << name << "]\n";
+		o << "kind = " << quote(p.kind) << "\n";
+		if (!p.base_url.empty()) o << "base_url = " << quote(p.base_url) << "\n";
+		o << "auth_source = " << quote(p.auth_source) << "\n";
+		if (p.auth_source == "inline")
+			o << "# an inline key is stored here in plaintext. prefer env / key_cmd / keychain.\n";
+		if (!p.auth_value.empty()) o << "auth_value = " << quote(p.auth_value) << "\n";
+		if (!p.default_model.empty()) o << "default_model = " << quote(p.default_model) << "\n";
+		o << "\n";
+	}
+
+	o << "[defaults]\n";
+	if (!c.defaults.model.empty()) o << "model = " << quote(c.defaults.model) << "\n";
+	o << "max_tokens = " << c.defaults.max_tokens << "\n";
+	o << "thinking = " << quote(thinking_to(c.defaults.thinking)) << "\n";
+	if (!c.defaults.effort.empty()) o << "effort = " << quote(c.defaults.effort) << "\n";
+	o << "\n";
+
+	o << "# a price snapshot. verify against your provider's current pricing.\n";
+	for (const auto& [model, p] : c.prices) {
+		o << "[prices." << quote(model) << "]\n";
+		o << "input = " << p.input << "\noutput = " << p.output << "\n";
+		o << "cache_write = " << p.cache_write << "\ncache_read = " << p.cache_read << "\n\n";
+	}
+
+	if (!c.plugins.empty()) {
+		o << "plugins = [";
+		for (std::size_t i = 0; i < c.plugins.size(); ++i)
+			o << (i ? ", " : "") << quote(c.plugins[i]);
+		o << "]\n";
+	}
+
+	const fs::path p(path);
+	if (!p.parent_path().empty()) {
+		std::error_code ec;
+		fs::create_directories(p.parent_path(), ec);
+	}
+	std::ofstream f(path, std::ios::trunc);
+	if (!f) return fail(errc::io, "cannot write config: " + path);
+	f << o.str();
+	if (!f) return fail(errc::io, "write failed: " + path);
+	return {};
 }
 
 }  // namespace plume

@@ -72,6 +72,11 @@ struct config {
 
 [[nodiscard]] config default_config();
 [[nodiscard]] result<config> load_config(const std::string& path);
+
+// write a human-readable, commented config.toml (creating parent dirs). the
+// setup wizard uses this to persist choices; an inline key is written with a
+// visible warning comment so it is never stored in plaintext silently.
+[[nodiscard]] result<void> save_config(const config&, const std::string& path);
 [[nodiscard]] std::string default_config_path();  // $XDG_CONFIG_HOME/plume/config.toml
 [[nodiscard]] std::string default_data_path();    // $XDG_DATA_HOME/plume
 [[nodiscard]] std::string default_state_path();   // $XDG_STATE_HOME/plume

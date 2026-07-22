@@ -300,6 +300,10 @@ int run_cli(int argc, char** argv) {
 		setenv("PLUME_MOCK", "1", 1);
 		return -1;  // the tui handles the demo, in mock mode
 	}
+	if (sub == "setup") {
+		setenv("PLUME_WIZARD", "1", 1);
+		return -1;  // re-run the first-run wizard
+	}
 	if (sub == "--version" || sub == "-v") return std::printf("plume %s\n", PLUME_VERSION), 0;
 	if (sub == "--help" || sub == "-h") return print_help(), 0;
 	return -1;  // anything else (e.g. a conversation id to resume) goes to the tui
