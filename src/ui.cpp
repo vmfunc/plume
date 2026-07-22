@@ -1,7 +1,9 @@
 #include "ui.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <unordered_set>
 
 #include <ftxui/dom/node.hpp>
 #include <ftxui/screen/screen.hpp>
@@ -193,8 +195,71 @@ std::string role_label(plume::role r) {
 	return r == plume::role::user ? "you" : "plume";
 }
 
+bool ident_char(char c) {
+	const auto u = static_cast<unsigned char>(c);
+	return std::isalnum(u) || c == '_';
+}
+
+// a built-in, language-agnostic lexer for code blocks. tree-sitter is linked but
+// per-grammar wiring is out of this build's scope (flagged experimental in the
+// docs); this covers strings, comments, numbers and a common keyword set well
+// enough to read code by.
+Element highlight_line(const theme& th, const std::string& ln) {
+	static const std::unordered_set<std::string> kw = {
+	    "if",        "else",      "elif",       "for",       "while",     "do",       "return",
+	    "break",     "continue",  "switch",     "case",      "default",   "class",    "struct",
+	    "enum",      "union",     "public",     "private",   "protected", "virtual",  "override",
+	    "const",     "constexpr", "static",     "void",      "int",       "float",    "double",
+	    "char",      "bool",      "auto",       "namespace", "template",  "typename", "using",
+	    "new",       "delete",    "this",       "true",      "false",     "null",     "nullptr",
+	    "none",      "None",      "True",       "False",     "def",       "fn",       "func",
+	    "let",       "var",       "mut",        "pub",       "impl",      "trait",    "match",
+	    "import",    "from",      "as",         "async",     "await",     "yield",    "lambda",
+	    "try",       "except",    "finally",    "raise",     "throw",     "catch",    "package",
+	    "interface", "extends",   "implements", "type",      "where",     "and",      "or",
+	    "not",       "in",        "is",         "with",      "self",      "go",       "defer"};
+	Elements spans;
+	const std::size_t n = ln.size();
+	std::size_t i = 0;
+	auto push = [&](std::size_t a, std::size_t b, rgb c) {
+		spans.push_back(text(ln.substr(a, b - a)) | color(col(c)));
+	};
+	while (i < n) {
+		const char c = ln[i];
+		if ((c == '/' && i + 1 < n && ln[i + 1] == '/') || c == '#') {
+			push(i, n, th.p.muted);
+			break;
+		}
+		if (c == '"' || c == '\'' || c == '`') {
+			std::size_t j = i + 1;
+			while (j < n && ln[j] != c) j += (ln[j] == '\\' ? 2 : 1);
+			j = std::min(j + 1, n);
+			push(i, j, th.p.gold);
+			i = j;
+		} else if (std::isdigit(static_cast<unsigned char>(c))) {
+			std::size_t j = i;
+			while (j < n && (std::isalnum(static_cast<unsigned char>(ln[j])) || ln[j] == '.')) ++j;
+			push(i, j, th.p.foam);
+			i = j;
+		} else if (ident_char(c) && !std::isdigit(static_cast<unsigned char>(c))) {
+			std::size_t j = i;
+			while (j < n && ident_char(ln[j])) ++j;
+			push(i, j, kw.contains(ln.substr(i, j - i)) ? th.p.iris : th.p.text);
+			i = j;
+		} else {
+			std::size_t j = i + 1;
+			while (j < n && !ident_char(ln[j]) && ln[j] != '"' && ln[j] != '\'' && ln[j] != '`' &&
+			       ln[j] != '#' && !(ln[j] == '/' && j + 1 < n && ln[j + 1] == '/'))
+				++j;
+			push(i, j, th.p.subtle);
+			i = j;
+		}
+	}
+	if (spans.empty()) spans.push_back(text(" "));
+	return hbox(std::move(spans)) | bgcolor(col(th.p.surface));
+}
+
 Element body_block(const theme& th, const std::string& body) {
-	// code fences render dim on the surface; everything else is plain prose.
 	Elements lines;
 	bool in_code = false;
 	std::size_t start = 0;
@@ -205,8 +270,12 @@ Element body_block(const theme& th, const std::string& body) {
 		    text_body.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
 		if (ln.rfind("```", 0) == 0) {
 			in_code = !in_code;
+			const std::string lang = ln.substr(3);
+			if (in_code && !lang.empty())
+				lines.push_back(hbox({text(" " + lang + " ") | color(col(th.p.base)) |
+				                      bgcolor(col(th.p.pine))}));  // language badge
 		} else if (in_code) {
-			lines.push_back(text("  " + ln) | color(col(th.p.foam)) | bgcolor(col(th.p.surface)));
+			lines.push_back(hbox({text("  "), highlight_line(th, ln)}));
 		} else {
 			lines.push_back(paragraph(ln) | color(col(th.p.text)));
 		}

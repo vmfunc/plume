@@ -20,9 +20,9 @@ std::string render(Element e, int w, int h) {
 TEST_CASE("command overlay renders its title and items over a base view") {
 	const theme th = rose_pine();
 	Element base = vbox({text("header"), filler(), text("a blank page") | center, filler()});
-	Element ov = ui::overlay(
-	    th, "commands",
-	    ui::pick_list(th, "th", {{"theme", "switch theme"}, {"weave", "the loom"}}, 0));
+	Element ov =
+	    ui::overlay(th, "commands",
+	                ui::pick_list(th, "th", {{"theme", "switch theme"}, {"weave", "the loom"}}, 0));
 	const std::string s = render(dbox({base, ov}), 66, 16);
 	CHECK(s.find("commands") != std::string::npos);
 	CHECK(s.find("theme") != std::string::npos);
@@ -52,6 +52,18 @@ TEST_CASE("the context meter fills proportionally") {
 	const std::string full = render(ui::meter(th, 1.0f, 10), 12, 1);
 	const std::string empty = render(ui::meter(th, 0.0f, 10), 12, 1);
 	CHECK(full.size() >= empty.size());  // both render without crashing
+}
+
+TEST_CASE("code fences highlight keywords, strings and a language badge") {
+	const theme th = rose_pine();
+	Element card = ui::message_card(th, role::assistant,
+	                                "here:\n```cpp\nconst int x = \"hi\"; // note\n```\ndone", {},
+	                                false, false, "m", 0);
+	const std::string s = render(card, 60, 12);
+	// the badge shows the language, and the code line survives lexing intact.
+	CHECK(s.find("cpp") != std::string::npos);
+	CHECK(s.find("const") != std::string::npos);
+	CHECK(s.find("\"hi\"") != std::string::npos);
 }
 
 TEST_CASE("image half-block node renders cells for a decoded bitmap") {

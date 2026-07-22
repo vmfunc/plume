@@ -9,11 +9,14 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <thread>
 #include <vector>
 
@@ -50,6 +53,50 @@ Color col(rgb c) {
 std::int64_t now_ms() {
 	using namespace std::chrono;
 	return duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+std::string base64(std::string_view in) {
+	static constexpr char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	std::string out;
+	out.reserve((in.size() + 2) / 3 * 4);
+	std::size_t i = 0;
+	for (; i + 2 < in.size(); i += 3) {
+		const auto n = static_cast<std::uint32_t>((static_cast<unsigned char>(in[i]) << 16) |
+		                                          (static_cast<unsigned char>(in[i + 1]) << 8) |
+		                                          static_cast<unsigned char>(in[i + 2]));
+		out.push_back(t[(n >> 18) & 63]);
+		out.push_back(t[(n >> 12) & 63]);
+		out.push_back(t[(n >> 6) & 63]);
+		out.push_back(t[n & 63]);
+	}
+	if (i < in.size()) {
+		std::uint32_t n = static_cast<unsigned char>(in[i]) << 16;
+		if (i + 1 < in.size()) n |= static_cast<unsigned char>(in[i + 1]) << 8;
+		out.push_back(t[(n >> 18) & 63]);
+		out.push_back(t[(n >> 12) & 63]);
+		out.push_back(i + 1 < in.size() ? t[(n >> 6) & 63] : '=');
+		out.push_back('=');
+	}
+	return out;
+}
+
+// copy to the system clipboard via OSC 52. the terminal consumes the escape
+// immediately, so it survives ftxui repainting the cells around it.
+void osc52_copy(std::string_view s) {
+	const std::string seq = "\x1b]52;c;" + base64(s) + "\x07";
+	std::fwrite(seq.data(), 1, seq.size(), stdout);
+	std::fflush(stdout);
+}
+
+// the last fenced code block if there is one, else the whole text.
+std::string last_code_block(const std::string& body) {
+	std::size_t close = body.rfind("```");
+	if (close == std::string::npos) return body;
+	std::size_t open = body.rfind("```", close == 0 ? 0 : close - 1);
+	if (open == std::string::npos || open == close) return body;
+	std::size_t nl = body.find('\n', open);  // skip the ```lang line
+	if (nl == std::string::npos || nl >= close) return body;
+	return body.substr(nl + 1, close - nl - 1);
 }
 
 struct action {
@@ -145,8 +192,9 @@ struct app::impl {
 	bool in_weave = false;
 	int weave_cursor = 0;
 	std::vector<node_id> weave_order;
-	node_id graft_source;    // set by the first 'g', consumed by the second
-	std::string weave_note;  // transient feedback in the weave detail line
+	node_id graft_source;                  // set by the first 'g', consumed by the second
+	std::optional<node_id> refork_parent;  // set by 'e': the next send forks here
+	std::string weave_note;                // transient feedback in the weave detail line
 
 	wizard wiz;
 	std::string convo_title = "first light";
@@ -210,6 +258,14 @@ struct app::impl {
 		if (!db) return;
 		weave w(*db);
 		if (auto path = w.active_path(convo)) transcript = *path;
+	}
+
+	std::string node_text(const node& n) const {
+		std::string out;
+		if (auto blocks = codec::decode_blocks(n.content_json))
+			for (const auto& b : *blocks)
+				if (const auto* t = std::get_if<text_block>(&b)) out += t->text;
+		return out;
 	}
 
 	// the request context (root -> leaf) as provider messages.
@@ -334,8 +390,8 @@ struct app::impl {
 					auto b = codec::decode_blocks(n.content_json);
 					const std::string body = b ? message{n.role, *b}.plain_text() : n.content_json;
 					if (fmt == "html")
-						out += "<section><h3>" + std::string(to_string(n.role)) + "</h3><pre>" + body +
-						       "</pre></section>\n";
+						out += "<section><h3>" + std::string(to_string(n.role)) + "</h3><pre>" +
+						       body + "</pre></section>\n";
 					else
 						out += "## " + std::string(to_string(n.role)) + "\n\n" + body + "\n\n";
 				}
@@ -481,7 +537,8 @@ struct app::impl {
 				items.emplace_back(title, c.source);
 			}
 		} else if (ov == overlay::search) {
-			for (const auto& h : search_hits) items.emplace_back(h.snippet, h.node.str().substr(0, 12));
+			for (const auto& h : search_hits)
+				items.emplace_back(h.snippet, h.node.str().substr(0, 12));
 		}
 		return items;
 	}
@@ -492,21 +549,35 @@ struct app::impl {
 				return hbox({text(k) | color(col(th.p.foam)) | size(WIDTH, EQUAL, 14),
 				             text(d) | color(col(th.p.subtle))});
 			};
-			return ui::overlay(
-			    th, "keys",
-			    vbox({row("ctrl-k", "command palette"), row("ctrl-p", "conversation picker"),
-			          row("ctrl-f", "search everything"), row("ctrl-w", "open the loom"),
-			          row("ctrl-e", "composer to $EDITOR"), row("/", "slash command (insert)"),
-			          row("? ", "this cheatsheet (normal)"), row("esc", "stop / close"),
-			          text(""), text("weave") | color(col(th.p.gold)),
-			          row("hjkl", "move"), row("enter", "adopt branch"), row("s", "spawn 3 branches"),
-			          row("g / x", "graft / export dot"), row("p / P", "prune / restore"),
-			          text(""), text("composer is vim-modal — i to insert, esc for normal") |
-			                        color(col(th.p.muted)) | dim}));
+			return ui::overlay(th, "keys",
+			                   vbox({row("ctrl-k", "command palette"),
+			                         row("ctrl-p", "conversation picker"),
+			                         row("ctrl-f", "search everything"),
+			                         row("ctrl-w", "open the loom"),
+			                         row("ctrl-e", "composer to $EDITOR"),
+			                         row("/", "slash command (insert)"),
+			                         row("? ", "this cheatsheet (normal)"),
+			                         row("esc", "stop / close"),
+			                         text(""),
+			                         text("weave") | color(col(th.p.gold)),
+			                         row("hjkl", "move"),
+			                         row("enter", "adopt branch"),
+			                         row("s", "spawn 3 branches"),
+			                         row("r", "regenerate"),
+			                         row("e", "edit + refork"),
+			                         row("y", "yank code"),
+			                         row("t", "toggle thinking"),
+			                         row("m", "bookmark"),
+			                         row("g / x", "graft / export dot"),
+			                         row("p / P", "prune / restore"),
+			                         text(""),
+			                         text("composer is vim-modal — i to insert, esc for normal") |
+			                             color(col(th.p.muted)) | dim}));
 		}
 		const auto items = overlay_items();
-		const std::string title =
-		    ov == overlay::palette ? "commands" : (ov == overlay::picker ? "conversations" : "search");
+		const std::string title = ov == overlay::palette
+		                              ? "commands"
+		                              : (ov == overlay::picker ? "conversations" : "search");
 		return ui::overlay(th, title, ui::pick_list(th, ov_filter, items, ov_sel));
 	}
 
@@ -564,7 +635,8 @@ struct app::impl {
 					}
 					++seen;
 				}
-			} else if (ov == overlay::search && ov_sel >= 0 && ov_sel < static_cast<int>(search_hits.size())) {
+			} else if (ov == overlay::search && ov_sel >= 0 &&
+			           ov_sel < static_cast<int>(search_hits.size())) {
 				goto_hit(search_hits[static_cast<std::size_t>(ov_sel)]);
 			}
 			return true;
@@ -613,7 +685,12 @@ struct app::impl {
 
 		weave w(*db);
 		std::optional<node_id> parent;
-		if (auto conv = db->conversation_of(convo); conv) parent = conv->active_leaf;
+		if (refork_parent) {
+			parent = *refork_parent;  // an edited turn forks a sibling from its old parent
+			refork_parent.reset();
+		} else if (auto conv = db->conversation_of(convo); conv) {
+			parent = conv->active_leaf;
+		}
 
 		node user;
 		user.id = node_id{new_id("node")};
@@ -741,163 +818,13 @@ struct app::impl {
 
 	// -- rendering ------------------------------------------------------------
 
-	double cost_of(const usage& u) const {
-		if (auto it = cfg.prices.find(model_id()); it != cfg.prices.end())
-			return (u.input * it->second.input + u.output * it->second.output +
-			        u.cache_read * it->second.cache_read +
-			        u.cache_creation * it->second.cache_write) /
-			       1e6;
-		return 0.0;
-	}
-
-	Element header() {
-		return vbox({
-		    hbox({text(" "), ui::gradient_text("plume", {th.p.love, th.p.iris, th.p.foam}) | bold,
-		          text("  " + convo_title) | color(col(th.p.subtle)), filler(),
-		          text(in_weave ? "weave " : "") | color(col(th.p.foam)) | dim}),
-		    separator() | color(col(th.p.hl_med)),
-		});
-	}
-
-	Element statusbar() {
-		usage tot = last_usage;
-		std::string cost = std::to_string(cost_of(tot));
-		cost = cost.substr(0, cost.find('.') + 5);
-		const float frac =
-		    context_window > 0 ? static_cast<float>(tot.input) / context_window : 0.f;
-		auto dot = [&] { return text(" · ") | color(col(th.p.muted)); };
-		Elements line = {
-		    ui::pill(th, model_id(), th.p.iris),
-		    text(" "),
-		    ui::meter(th, frac, 12),
-		    dot(),
-		    text("in " + std::to_string(tot.input) + " out " + std::to_string(tot.output)) |
-		        color(col(th.p.foam)),
-		    dot(),
-		    text("$" + cost) | color(col(th.p.gold)),
-		    dot(),
-		    text(std::to_string(ttft_ms) + "ms") | color(col(th.p.pine)),
-		};
-		if (plugins)
-			for (const auto& s : plugins->statusline()) {
-				line.push_back(dot());
-				line.push_back(text(s.text) | color(col(th.p.rose)));
-			}
-		line.push_back(filler());
-		if (!toast.empty()) line.push_back(text(toast + " ") | color(col(th.p.foam)));
-		if (streaming || compacting.load())
-			line.push_back(text(ui::spinner(now_ms()) + " streaming ") | color(col(th.p.rose)));
-		line.push_back(text(in_weave ? " weave " : " chat ") | color(col(th.p.subtle)) |
-		               bgcolor(col(th.p.overlay)));
-		return hbox(std::move(line)) | bgcolor(col(th.p.surface));
-	}
-
-	Element transcript_view() {
-		Elements out;
-		const bool cmp = compact();
-		for (const auto& n : transcript) {
-			auto blocks = codec::decode_blocks(n.content_json);
-			std::string body;
-			std::vector<std::string> thinks;
-			if (blocks) {
-				body = message{n.role, *blocks}.plain_text();
-				for (const auto& b : *blocks)
-					if (const auto* t = std::get_if<thinking_block>(&b))
-						thinks.push_back(t->thinking);
-			} else {
-				body = n.content_json;
-			}
-			out.push_back(
-			    ui::message_card(th, n.role, body, thinks, show_think, cmp, n.model, n.tokens_out));
-		}
-		if (streaming || !live_text.empty() || !live_think.empty())
-			out.push_back(ui::streaming_card(th, live_text, live_think, show_think, cmp, now_ms(),
-			                                 reduce_motion()));
-		if (out.empty())
-			out.push_back(vbox({filler(), text("a blank page.") | color(col(th.p.subtle)) | center,
-			                    text("type below to begin · ctrl-w to weave") |
-			                        color(col(th.p.muted)) | dim | center,
-			                    filler()}));
-		if (!status_error.empty()) out.push_back(text("  " + status_error) | color(col(th.p.love)));
-		out.back() = out.back() | focus;  // keep the newest turn in view
-		return vbox(std::move(out)) | yframe | flex;
-	}
-
-	Element weave_view() {
-		weave w(*db);
-		auto v = w.view(convo, false);
-		Elements rows;
-		weave_order.clear();
-		if (v) {
-			for (const auto& id : v->preorder) {
-				const auto& tn = v->nodes.at(id);
-				weave_order.push_back(id);
-				const int i = static_cast<int>(weave_order.size()) - 1;
-				const std::string label =
-				    codec::read_str(tn.data.params_json, "label").value_or("");
-				const bool mark = codec::read_bool(tn.data.params_json, "bookmark").value_or(false);
-				const bool is_source = !graft_source.empty() && id == graft_source;
-				const rgb c = tn.data.role == role::user ? th.p.pine : th.p.iris;
-				std::string indent;
-				for (int d = 0; d < tn.depth; ++d) indent += "  ";
-				const std::string glyph = tn.data.role == role::user ? "◇ " : "◆ ";
-				Elements cells = {
-				    text(indent), text(mark ? "★ " : "") | color(col(th.p.gold)),
-				    text(glyph) | color(col(c)),
-				    text(std::string(to_string(tn.data.role))) | color(col(th.p.text))};
-				if (!label.empty())
-					cells.push_back(text("  " + label) | color(col(th.p.foam)) | italic);
-				if (is_source)
-					cells.push_back(text("  graft source") | color(col(th.p.gold)) | dim);
-				Element e = hbox(std::move(cells));
-				if (i == weave_cursor)
-					e = hbox({text("▏") | color(col(th.p.iris)), e}) | bgcolor(col(th.p.hl_low)) |
-					    focus;
-				else
-					e = hbox({text(" "), e});
-				rows.push_back(e);
-			}
-		}
-		if (rows.empty()) rows.push_back(text("  the tree is empty") | color(col(th.p.muted)));
-		Element tree = vbox(std::move(rows)) | yframe | flex;
-		Element help = text(
-		                   "hjkl move · enter adopt · p prune · P restore · m bookmark · g graft · "
-		                   "x export dot · ctrl-w back") |
-		               color(col(th.p.subtle)) | dim;
-		Elements bottom = {help};
-		if (!weave_note.empty()) bottom.push_back(text("  " + weave_note) | color(col(th.p.gold)));
-		return vbox({hbox({text(" the loom ") | bold | color(col(th.p.base)) |
-		                       bgcolor(col(th.p.iris)),
-		                   filler()}),
-		             separator() | color(col(th.p.hl_med)), tree,
-		             separator() | color(col(th.p.hl_med)), vbox(std::move(bottom))}) |
-		       flex;
-	}
-
-	Element spawn_view() {
-		Elements cols;
-		for (std::size_t i = 0; i < siblings.size(); ++i) {
-			sibling_stream* s = siblings[i].get();
-			const rgb tint =
-			    std::array{th.p.iris, th.p.foam, th.p.rose, th.p.gold, th.p.pine}[i % 5];
-			Element head =
-			    hbox({text("branch " + std::to_string(i + 1) + " ") | bold | color(col(tint)),
-			          s->done ? text("done") | color(col(th.p.foam))
-			                  : text(ui::spinner(now_ms())) | color(col(th.p.gold))});
-			cols.push_back(vbox({head, separator() | color(col(th.p.hl_med)),
-			                     paragraph(s->text) | color(col(th.p.text)) | flex}) |
-			               borderRounded | color(col(tint)) | flex);
-		}
-		const std::string note =
-		    spawn_done ? "done · any key returns to the loom to adopt a branch" : "esc to stop";
-		return vbox({hbox({ui::gradient_text("the loom", {th.p.love, th.p.iris, th.p.foam}) | bold,
-		                   text("  " + std::to_string(siblings.size()) + " branches, streaming") |
-		                       color(col(th.p.subtle))}),
-		             separator() | color(col(th.p.hl_med)), hbox(std::move(cols)) | flex,
-		             separator() | color(col(th.p.hl_med)),
-		             text(note) | color(col(th.p.subtle)) | dim}) |
-		       flex;
-	}
+	// defined out-of-line in app_render.cpp.
+	double cost_of(const usage& u) const;
+	Element header();
+	Element statusbar();
+	Element transcript_view();
+	Element weave_view();
+	Element spawn_view();
 
 	node_id weave_selected() const {
 		if (weave_cursor >= 0 && weave_cursor < static_cast<int>(weave_order.size()))
@@ -925,6 +852,32 @@ struct app::impl {
 		if (e == Event::Character("P")) return static_cast<void>(w.restore(sel)), true;
 		if (e == Event::Character("s")) {
 			spawn_siblings(sel, 3);  // three branches, streamed in parallel
+			return true;
+		}
+		if (e == Event::Character("r")) {
+			spawn_siblings(sel, 1);  // regenerate: one fresh alternative
+			return true;
+		}
+		if (e == Event::Character("t")) {
+			show_think = !show_think;
+			weave_note = show_think ? "thinking shown" : "thinking hidden";
+			return true;
+		}
+		if (e == Event::Character("y")) {
+			if (auto n = db->node_of(sel)) {
+				osc52_copy(last_code_block(node_text(*n)));
+				weave_note = "yanked to clipboard";
+			}
+			return true;
+		}
+		if (e == Event::Character("e")) {
+			// pull a turn back into the composer; the next send forks a sibling of it.
+			if (auto n = db->node_of(sel)) {
+				comp.set_text(node_text(*n));
+				refork_parent = n->parent ? std::optional<node_id>(*n->parent) : std::nullopt;
+				in_weave = false;
+				weave_note.clear();
+			}
 			return true;
 		}
 		if (e == Event::Character("m")) {
