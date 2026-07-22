@@ -18,7 +18,10 @@ TEST_CASE("config written by the wizard round-trips through the loader") {
 	c.keys.preset = "emacs";
 	c.default_provider = "anthropic";
 	c.defaults.model = "claude-opus-4-8";
-	c.defaults.thinking = thinking_mode::adaptive;
+	c.defaults.thinking = thinking_mode::budget;
+	c.defaults.thinking_budget = 8000;
+	c.defaults.temperature = 0.7;
+	c.defaults.top_p = 0.95;
 	c.defaults.effort = "high";
 	c.providers["anthropic"] = {"anthropic", "", "env", "ANTHROPIC_API_KEY", "claude-opus-4-8"};
 
@@ -34,7 +37,12 @@ TEST_CASE("config written by the wizard round-trips through the loader") {
 	CHECK(back->keys.preset == "emacs");
 	CHECK(back->default_provider == "anthropic");
 	CHECK(back->defaults.model == "claude-opus-4-8");
-	CHECK(back->defaults.thinking == thinking_mode::adaptive);
+	CHECK(back->defaults.thinking == thinking_mode::budget);
+	CHECK(back->defaults.thinking_budget == 8000);
+	REQUIRE(back->defaults.temperature.has_value());
+	CHECK(*back->defaults.temperature == doctest::Approx(0.7));
+	REQUIRE(back->defaults.top_p.has_value());
+	CHECK(*back->defaults.top_p == doctest::Approx(0.95));
 	CHECK(back->defaults.effort == "high");
 
 	REQUIRE(back->providers.contains("anthropic"));

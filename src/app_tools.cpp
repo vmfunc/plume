@@ -2,6 +2,7 @@
 // server's approval policy, and continue the conversation with the results.
 // split out of app_impl.hpp so it stays under the length limit.
 #include <algorithm>
+#include <charconv>
 
 #include <nlohmann/json.hpp>
 
@@ -10,6 +11,95 @@
 namespace plume {
 
 using namespace ftxui;
+
+namespace {
+
+bool parse_double(const std::string& s, double& out) {
+	const auto* end = s.data() + s.size();
+	auto [p, ec] = std::from_chars(s.data(), end, out);
+	return ec == std::errc{} && p == end;
+}
+
+bool parse_int(const std::string& s, int& out) {
+	const auto* end = s.data() + s.size();
+	auto [p, ec] = std::from_chars(s.data(), end, out);
+	return ec == std::errc{} && p == end;
+}
+
+std::string trim_num(double v) {
+	std::string s = std::to_string(v);
+	if (const auto dot = s.find('.'); dot != std::string::npos) {
+		std::size_t last = s.find_last_not_of('0');
+		if (last == dot) --last;
+		s.erase(last + 1);
+	}
+	return s;
+}
+
+}  // namespace
+
+bool app::impl::set_param(const std::string& name, const std::string& arg) {
+	if (name == "params") {
+		toast = params_summary();
+	} else if (name == "temp") {
+		double v;
+		if (parse_double(arg, v)) {
+			cfg.defaults.temperature = v;
+			persist_config();
+			toast = "temperature " + arg;
+		} else {
+			toast = "temp wants a number";
+		}
+	} else if (name == "top_p") {
+		double v;
+		if (parse_double(arg, v)) {
+			cfg.defaults.top_p = v;
+			persist_config();
+			toast = "top_p " + arg;
+		} else {
+			toast = "top_p wants a number";
+		}
+	} else if (name == "max") {
+		int v;
+		if (parse_int(arg, v) && v > 0) {
+			cfg.defaults.max_tokens = v;
+			persist_config();
+			toast = "max_tokens " + arg;
+		} else {
+			toast = "max wants a positive integer";
+		}
+	} else if (name == "think") {
+		if (arg == "off") {
+			cfg.defaults.thinking = thinking_mode::off;
+		} else if (arg == "on" || arg == "adaptive") {
+			cfg.defaults.thinking = thinking_mode::adaptive;
+		} else if (int v; parse_int(arg, v) && v > 0) {
+			cfg.defaults.thinking = thinking_mode::budget;
+			cfg.defaults.thinking_budget = v;
+		} else {
+			toast = "think wants off | adaptive | <budget>";
+			return true;
+		}
+		persist_config();
+		toast = "thinking " + arg;
+	} else {
+		return false;  // not a param command
+	}
+	return true;
+}
+
+std::string app::impl::params_summary() const {
+	const auto& p = cfg.defaults;
+	std::string s = "model " + model_id() + " · max " + std::to_string(p.max_tokens);
+	if (p.temperature) s += " · temp " + trim_num(*p.temperature);
+	if (p.top_p) s += " · top_p " + trim_num(*p.top_p);
+	const char* tm = p.thinking == thinking_mode::off        ? "off"
+	                 : p.thinking == thinking_mode::adaptive ? "adaptive"
+	                                                         : "budget";
+	s += std::string(" · think ") + tm;
+	if (p.thinking == thinking_mode::budget) s += " " + std::to_string(p.thinking_budget);
+	return s;
+}
 
 std::vector<tool_def> app::impl::tool_defs() const {
 	std::vector<tool_def> out;

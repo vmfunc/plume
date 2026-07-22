@@ -107,13 +107,19 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 13> kActions = {{
+constexpr std::array<action, 19> kActions = {{
     {"weave", "open the loom", false},
     {"model", "set the model <id>", true},
+    {"params", "show sampling params", false},
+    {"temp", "set temperature <0..1>", true},
+    {"top_p", "set top_p <0..1>", true},
+    {"max", "set max_tokens <n>", true},
+    {"think", "thinking <off|adaptive|n>", true},
     {"theme", "switch theme <name>", true},
     {"system", "set a system prompt <text>", true},
     {"search", "search this conversation <q>", true},
     {"compact", "summarize older turns", false},
+    {"continue", "resume a truncated turn", false},
     {"tag", "tag this conversation <name>", true},
     {"new", "start a fresh conversation", false},
     {"export", "export convo <md|json|html>", true},
@@ -523,12 +529,27 @@ struct app::impl {
 			persist_config();
 		} else if (name == "help") {
 			ov = overlay::cheatsheet;
+		} else if (name == "continue") {
+			continue_turn();
 		} else if (name == "quit") {
 			screen.ExitLoopClosure()();
+		} else if (set_param(name, arg)) {
+			// handled: params / temp / top_p / max / think
 		} else {
 			toast = "unknown command: " + name;
 		}
 	}
+
+	// resume a turn cut short by max_tokens: nudge the model to keep going.
+	void continue_turn() {
+		if (streaming || transcript.empty()) return;
+		truncated = false;
+		send("continue.");
+	}
+
+	// sampling-param setters and the /params summary live in app_tools.cpp.
+	bool set_param(const std::string& name, const std::string& arg);
+	std::string params_summary() const;
 
 	// run a "/name arg" line from the composer.
 	void run_slash(const std::string& line) {
@@ -548,7 +569,10 @@ struct app::impl {
 			for (const auto& c : picker_convos) {
 				const std::string title = c.title.empty() ? "(untitled)" : c.title;
 				if (!ov_filter.empty() && !fuzzy(ov_filter, title)) continue;
-				items.emplace_back(title, c.source);
+				const std::string badge = c.source == "claude-export" ? "↪ claude.ai"
+				                          : c.source == "claude-live" ? "↪ live mirror"
+				                                                      : "";
+				items.emplace_back(title, badge);
 			}
 		} else if (ov == overlay::search) {
 			for (const auto& h : search_hits)
@@ -821,8 +845,20 @@ struct app::impl {
 			if (!tool_queue.empty()) {
 				tool_parent = reply.id;
 				advance_tools();
+				return;  // notify only when the whole exchange settles
 			}
 		}
+		notify_done();
+	}
+
+	// ring the terminal (or fire an OSC 9 desktop notification) when a turn lands,
+	// so a backgrounded plume can nudge you. off by default-respecting config.
+	void notify_done() {
+		if (cfg.notify == "off") return;
+		std::string seq = "\a";  // bell
+		if (cfg.notify == "osc9") seq = "\x1b]9;plume: your turn\x07";
+		std::fwrite(seq.data(), 1, seq.size(), stdout);
+		std::fflush(stdout);
 	}
 
 	// -- mcp tool-use loop (defined in app_tools.cpp) -------------------------

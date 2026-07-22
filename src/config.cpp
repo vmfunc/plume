@@ -211,7 +211,11 @@ result<void> save_config(const config& c, const std::string& path) {
 	o << "[defaults]\n";
 	if (!c.defaults.model.empty()) o << "model = " << quote(c.defaults.model) << "\n";
 	o << "max_tokens = " << c.defaults.max_tokens << "\n";
+	if (c.defaults.temperature) o << "temperature = " << *c.defaults.temperature << "\n";
+	if (c.defaults.top_p) o << "top_p = " << *c.defaults.top_p << "\n";
 	o << "thinking = " << quote(thinking_to(c.defaults.thinking)) << "\n";
+	if (c.defaults.thinking_budget > 0)
+		o << "thinking_budget = " << c.defaults.thinking_budget << "\n";
 	if (!c.defaults.effort.empty()) o << "effort = " << quote(c.defaults.effort) << "\n";
 	o << "\n";
 
