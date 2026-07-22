@@ -32,6 +32,13 @@ img::bitmap splash_bitmap(int w, int h, const theme&);
 // renders in any truecolor terminal. fits inside max_cols x max_rows.
 ftxui::Element image_halfblock(const img::bitmap&, int max_cols, int max_rows);
 
+// a centered overlay card (used by the palette, cheatsheet, picker, search).
+ftxui::Element overlay(const theme&, const std::string& title, ftxui::Element body);
+
+// a filterable list: each item is (label, hint); the selected row is highlighted.
+ftxui::Element pick_list(const theme&, const std::string& filter,
+                         const std::vector<std::pair<std::string, std::string>>& items, int sel);
+
 // a smooth 0..1..0 over period_ms, for a breathing glyph.
 float breathe(std::int64_t ms, int period_ms);
 // a braille spinner frame chosen by the clock.

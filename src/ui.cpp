@@ -156,6 +156,37 @@ Element pill(const theme& th, const std::string& label, rgb fg) {
 	return text(" " + label + " ") | color(col(fg)) | bgcolor(col(th.p.overlay));
 }
 
+Element overlay(const theme& th, const std::string& title, Element body) {
+	Element card = vbox({
+	                   hbox({gradient_text("plume", {th.p.love, th.p.iris, th.p.foam}) | bold,
+	                         text("  " + title) | color(col(th.p.gold))}),
+	                   separator() | color(col(th.p.hl_med)),
+	                   body,
+	               }) |
+	               borderRounded | color(col(th.p.hl_high)) | bgcolor(col(th.p.surface)) |
+	               size(WIDTH, GREATER_THAN, 52) | size(WIDTH, LESS_THAN, 88) |
+	               size(HEIGHT, LESS_THAN, 24);
+	return vbox({filler(), hbox({filler(), card, filler()}), filler()});
+}
+
+Element pick_list(const theme& th, const std::string& filter,
+                  const std::vector<std::pair<std::string, std::string>>& items, int sel) {
+	Elements rows;
+	rows.push_back(hbox({text("› ") | color(col(th.p.iris)) | bold,
+	                     text(filter) | color(col(th.p.text)), text("▏") | color(col(th.p.iris))}));
+	rows.push_back(text(""));
+	for (std::size_t i = 0; i < items.size(); ++i) {
+		const bool on = static_cast<int>(i) == sel;
+		Element row = hbox({text(on ? "  ▸ " : "    ") | color(col(on ? th.p.iris : th.p.muted)),
+		                    text(items[i].first) | color(col(on ? th.p.text : th.p.subtle)) |
+		                        size(WIDTH, EQUAL, 16),
+		                    text(items[i].second) | color(col(th.p.muted)) | dim});
+		if (on) row = row | bgcolor(col(th.p.hl_low));
+		rows.push_back(row);
+	}
+	return vbox(std::move(rows));
+}
+
 namespace {
 
 std::string role_label(plume::role r) {
