@@ -24,6 +24,9 @@
 
 namespace plume {
 
+// defined in provider/mock.cpp.
+std::unique_ptr<provider> make_mock();
+
 namespace {
 
 void err(const std::string& m) {
@@ -51,6 +54,7 @@ std::string flag_value(const std::vector<std::string>& a, std::string_view f) {
 }
 
 result<std::unique_ptr<provider>> provider_from(const config& cfg) {
+	if (std::getenv("PLUME_MOCK")) return make_mock();  // for demos and pipe tests
 	const provider_entry* pe = cfg.active_provider();
 	if (!pe) return fail(errc::config, "no provider configured — run plume and finish the wizard");
 	provider_config pc;
