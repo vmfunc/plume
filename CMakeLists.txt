@@ -26,6 +26,7 @@ pkg_check_modules(TREESITTER IMPORTED_TARGET tree-sitter)
 
 find_package(ftxui REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(tomlplusplus REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(sol2 REQUIRED)
 
@@ -59,6 +60,7 @@ target_link_libraries(plume_core
 		PkgConfig::CHAFA
 		ftxui::screen ftxui::dom ftxui::component
 		nlohmann_json::nlohmann_json
+		tomlplusplus::tomlplusplus
 		spdlog::spdlog
 		sol2::sol2)
 if(TARGET PkgConfig::TREESITTER)

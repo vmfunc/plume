@@ -34,6 +34,7 @@
             curl
             sqlite
             nlohmann_json
+            tomlplusplus
             luajit
             sol2
             tree-sitter

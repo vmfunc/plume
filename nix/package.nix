@@ -8,6 +8,7 @@
 , curl
 , sqlite
 , nlohmann_json
+, tomlplusplus
 , luajit
 , sol2
 , tree-sitter
@@ -37,6 +38,7 @@ stdenv.mkDerivation (finalAttrs: {
     curl
     sqlite
     nlohmann_json
+    tomlplusplus
     luajit
     sol2
     tree-sitter

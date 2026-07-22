@@ -111,6 +111,7 @@ class store {
 	[[nodiscard]] result<std::vector<node>> nodes_of(const convo_id&);
 	[[nodiscard]] result<std::vector<node>> children_of(const node_id&);
 	[[nodiscard]] result<void> set_state(const node_id&, node_state);
+	[[nodiscard]] result<void> set_parent(const node_id&, const std::optional<node_id>&);
 
 	// attachments
 	[[nodiscard]] result<void> put_attachment(const attachment&);
