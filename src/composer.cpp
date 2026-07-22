@@ -89,7 +89,8 @@ bool composer::text_object(char obj, bool around, std::size_t& lo, std::size_t& 
 		bool found_o = false;
 		int bal = 0;
 		for (std::size_t i = at + 1; i-- > 0;) {
-			if (buf_[i] == close && i != at) ++bal;
+			if (buf_[i] == close && i != at)
+				++bal;
 			else if (buf_[i] == open) {
 				if (bal == 0) {
 					o = i;
@@ -103,7 +104,8 @@ bool composer::text_object(char obj, bool around, std::size_t& lo, std::size_t& 
 		if (!found_o) return false;
 		bal = 0;
 		for (std::size_t i = o + 1; i < n; ++i) {
-			if (buf_[i] == open) ++bal;
+			if (buf_[i] == open)
+				++bal;
 			else if (buf_[i] == close) {
 				if (bal == 0) {
 					lo = around ? o : o + 1;
@@ -183,8 +185,10 @@ composer::result composer::handle(const Event& e) {
 		if (obj_mod_ != 0 && e.is_character()) {  // ci"/ca( etc.
 			std::size_t lo = 0, hi = 0;
 			if (text_object(e.character()[0], obj_mod_ == 'a', lo, hi)) {
-				if (op == 'y') reg_ = buf_.substr(lo, hi - lo);
-				else op_delete(lo, hi, op == 'c');
+				if (op == 'y')
+					reg_ = buf_.substr(lo, hi - lo);
+				else
+					op_delete(lo, hi, op == 'c');
 			}
 			op_ = 0;
 			obj_mod_ = 0;
@@ -214,8 +218,10 @@ composer::result composer::handle(const Event& e) {
 			ok = false;
 		}
 		if (ok) {
-			if (op == 'y') reg_ = buf_.substr(std::min(lo, hi), (lo < hi ? hi - lo : lo - hi));
-			else op_delete(lo, hi, op == 'c');
+			if (op == 'y')
+				reg_ = buf_.substr(std::min(lo, hi), (lo < hi ? hi - lo : lo - hi));
+			else
+				op_delete(lo, hi, op == 'c');
 		}
 		op_ = 0;
 		count_ = 0;
@@ -234,16 +240,31 @@ composer::result composer::handle(const Event& e) {
 		}
 		switch (c) {
 			case 'i': mode_ = mode::insert; break;
-			case 'a': mode_ = mode::insert; if (cur_ < n) ++cur_; break;
-			case 'A': cur_ = n; mode_ = mode::insert; break;
-			case 'I': cur_ = 0; mode_ = mode::insert; break;
+			case 'a':
+				mode_ = mode::insert;
+				if (cur_ < n) ++cur_;
+				break;
+			case 'A':
+				cur_ = n;
+				mode_ = mode::insert;
+				break;
+			case 'I':
+				cur_ = 0;
+				mode_ = mode::insert;
+				break;
 			case 'h': cur_ = cur_ > static_cast<std::size_t>(cnt) ? cur_ - cnt : 0; break;
 			case 'l': cur_ = std::min(n, cur_ + cnt); break;
 			case '0': cur_ = 0; break;
 			case '$': cur_ = n == 0 ? 0 : n - 1; break;
-			case 'w': for (int k = 0; k < cnt; ++k) cur_ = next_word(cur_); break;
-			case 'b': for (int k = 0; k < cnt; ++k) cur_ = prev_word(cur_); break;
-			case 'e': for (int k = 0; k < cnt; ++k) cur_ = word_end(cur_); break;
+			case 'w':
+				for (int k = 0; k < cnt; ++k) cur_ = next_word(cur_);
+				break;
+			case 'b':
+				for (int k = 0; k < cnt; ++k) cur_ = prev_word(cur_);
+				break;
+			case 'e':
+				for (int k = 0; k < cnt; ++k) cur_ = word_end(cur_);
+				break;
 			case 'x':
 				for (int k = 0; k < cnt && cur_ < buf_.size(); ++k) buf_.erase(cur_, 1);
 				if (cur_ > 0 && cur_ >= buf_.size()) --cur_;
@@ -271,10 +292,11 @@ Element composer::render(const theme& th) const {
 	const auto C = [&](rgb c) { return color(Color::RGB(c.r, c.g, c.b)); };
 	const bool ins = mode_ == mode::insert;
 
-	Element badge = text(ins ? " INSERT " : " NORMAL ") | bold |
-	                color(Color::RGB(th.p.base.r, th.p.base.g, th.p.base.b)) |
-	                bgcolor(Color::RGB((ins ? th.p.foam : th.p.gold).r, (ins ? th.p.foam : th.p.gold).g,
-	                                   (ins ? th.p.foam : th.p.gold).b));
+	Element badge =
+	    text(ins ? " INSERT " : " NORMAL ") | bold |
+	    color(Color::RGB(th.p.base.r, th.p.base.g, th.p.base.b)) |
+	    bgcolor(Color::RGB((ins ? th.p.foam : th.p.gold).r, (ins ? th.p.foam : th.p.gold).g,
+	                       (ins ? th.p.foam : th.p.gold).b));
 
 	const std::string before = buf_.substr(0, cur_);
 	const std::string under = cur_ < buf_.size() ? buf_.substr(cur_, 1) : " ";
@@ -285,12 +307,12 @@ Element composer::render(const theme& th) const {
 	                        bgcolor(Color::RGB(th.p.iris.r, th.p.iris.g, th.p.iris.b)) | blink);
 
 	Elements line = {badge, text(" › ") | C(th.p.iris) | bold, text(before) | C(th.p.text), cursor};
-	if (ins)
-		line.push_back(text(under == " " ? "" : under) | C(th.p.text));
+	if (ins) line.push_back(text(under == " " ? "" : under) | C(th.p.text));
 	line.push_back(text(after) | C(th.p.text));
 	if (buf_.empty() && ins)
 		line.push_back(text(" type to talk, ctrl-w to weave") | C(th.p.muted) | dim);
-	return hbox(std::move(line)) | bgcolor(Color::RGB(th.p.surface.r, th.p.surface.g, th.p.surface.b));
+	return hbox(std::move(line)) |
+	       bgcolor(Color::RGB(th.p.surface.r, th.p.surface.g, th.p.surface.b));
 }
 
 }  // namespace plume

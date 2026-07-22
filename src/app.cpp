@@ -5,6 +5,7 @@
 // the tree.
 #include "plume/app.hpp"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -71,6 +72,14 @@ provider_config pc_from(const provider_entry& pe) {
 // defined in provider/mock.cpp.
 std::unique_ptr<provider> make_mock();
 
+// one branch of a parallel spawn: its own worker streaming into its own buffer.
+struct sibling_stream {
+	std::string text;
+	bool done = false;
+	node_id parent;
+	std::thread worker;
+};
+
 struct app::impl {
 	config cfg;
 	theme th;
@@ -107,6 +116,13 @@ struct app::impl {
 	std::string convo_title = "first light";
 	std::int64_t context_window = 200000;
 
+	// parallel spawn (the loom): k branches streaming at once, in columns.
+	bool spawning = false;
+	bool spawn_done = false;
+	std::atomic<bool> spawn_stop{false};
+	std::vector<std::unique_ptr<sibling_stream>> siblings;
+	int spawn_pending = 0;
+
 	// the animation heartbeat: posts a frame while something is moving, unless
 	// motion is off.
 	std::thread ticker;
@@ -115,15 +131,18 @@ struct app::impl {
 	explicit impl(config c) : cfg(std::move(c)) {}
 	~impl() {
 		stop_flag = true;
+		spawn_stop = true;
 		alive = false;
 		if (worker.joinable()) worker.join();
+		for (auto& s : siblings)
+			if (s->worker.joinable()) s->worker.join();
 		if (ticker.joinable()) ticker.join();
 	}
 
 	bool has_provider() const { return prov != nullptr; }
 	bool reduce_motion() const { return cfg.ui.reduce_motion; }
 	bool compact() const { return cfg.ui.density == "compact"; }
-	bool animating() const { return streaming.load() || wiz.animating(); }
+	bool animating() const { return streaming.load() || wiz.animating() || spawning; }
 
 	std::string model_id() const {
 		const provider_entry* pe = cfg.active_provider();
@@ -136,6 +155,88 @@ struct app::impl {
 		if (!db) return;
 		weave w(*db);
 		if (auto path = w.active_path(convo)) transcript = *path;
+	}
+
+	// the request context (root -> leaf) as provider messages.
+	std::vector<message> context_upto(std::optional<node_id> leaf) {
+		std::vector<node> chain;
+		std::optional<node_id> cur = std::move(leaf);
+		while (cur) {
+			auto n = db->node_of(*cur);
+			if (!n) break;
+			chain.push_back(*n);
+			cur = n->parent;
+		}
+		std::reverse(chain.begin(), chain.end());
+		std::vector<message> out;
+		for (const auto& n : chain)
+			if (auto b = codec::decode_blocks(n.content_json)) out.push_back(message{n.role, *b});
+		return out;
+	}
+
+	// spawn k continuations of a node's parent turn, each streamed in parallel.
+	void spawn_siblings(const node_id& anchor, int k) {
+		if (spawning || !db || !prov) return;
+		auto an = db->node_of(anchor);
+		if (!an) return;
+		const node_id parent =
+		    an->role == role::user ? an->id : (an->parent ? *an->parent : an->id);
+		const std::vector<message> ctx = context_upto(parent);
+
+		siblings.clear();
+		siblings.reserve(static_cast<std::size_t>(k));
+		spawning = true;
+		spawn_done = false;
+		spawn_stop = false;
+		spawn_pending = k;
+		in_weave = false;
+
+		for (int i = 0; i < k; ++i) {
+			siblings.push_back(std::make_unique<sibling_stream>());
+			sibling_stream* s = siblings.back().get();
+			s->parent = parent;
+			request req;
+			req.params = cfg.defaults;
+			req.params.model = model_id();
+			if (req.params.max_tokens < 1024) req.params.max_tokens = 4096;
+			req.messages = ctx;
+			s->worker = std::thread([this, s, req] {
+				auto out = prov->stream(
+				    req,
+				    [this, s](const stream_delta& d) {
+					    if (d.type == stream_delta::kind::text) {
+						    std::string t = d.text;
+						    screen.Post([s, t = std::move(t)] { s->text += t; });
+						    screen.PostEvent(Event::Custom);
+					    }
+				    },
+				    [this] { return spawn_stop.load(); });
+				screen.Post([this, s, out = std::move(out)] { finish_sibling(s, out); });
+				screen.PostEvent(Event::Custom);
+			});
+		}
+	}
+
+	void finish_sibling(sibling_stream* s, const result<completion>& out) {
+		s->done = true;
+		node reply;
+		reply.id = node_id{new_id("node")};
+		reply.convo = convo;
+		reply.parent = s->parent;
+		reply.role = role::assistant;
+		reply.model = model_id();
+		reply.created_at = now_ms();
+		if (out) {
+			reply.content_json = codec::encode_blocks(out->reply.blocks);
+			reply.tokens_out = out->tokens.output;
+		} else {
+			reply.content_json = codec::encode_blocks({text_block{s->text}});
+		}
+		if (db) static_cast<void>(db->put_node(reply));
+		if (--spawn_pending <= 0) {
+			spawning = false;
+			spawn_done = true;
+		}
 	}
 
 	// ctrl-e: bounce the composer out to $EDITOR and back, with the terminal
@@ -425,6 +526,31 @@ struct app::impl {
 		       flex;
 	}
 
+	Element spawn_view() {
+		Elements cols;
+		for (std::size_t i = 0; i < siblings.size(); ++i) {
+			sibling_stream* s = siblings[i].get();
+			const rgb tint =
+			    std::array{th.p.iris, th.p.foam, th.p.rose, th.p.gold, th.p.pine}[i % 5];
+			Element head =
+			    hbox({text("branch " + std::to_string(i + 1) + " ") | bold | color(col(tint)),
+			          s->done ? text("done") | color(col(th.p.foam))
+			                  : text(ui::spinner(now_ms())) | color(col(th.p.gold))});
+			cols.push_back(vbox({head, separator() | color(col(th.p.hl_med)),
+			                     paragraph(s->text) | color(col(th.p.text)) | flex}) |
+			               borderRounded | color(col(tint)) | flex);
+		}
+		const std::string note =
+		    spawn_done ? "done · any key returns to the loom to adopt a branch" : "esc to stop";
+		return vbox({hbox({ui::gradient_text("the loom", {th.p.love, th.p.iris, th.p.foam}) | bold,
+		                   text("  " + std::to_string(siblings.size()) + " branches, streaming") |
+		                       color(col(th.p.subtle))}),
+		             separator() | color(col(th.p.hl_med)), hbox(std::move(cols)) | flex,
+		             separator() | color(col(th.p.hl_med)),
+		             text(note) | color(col(th.p.subtle)) | dim}) |
+		       flex;
+	}
+
 	node_id weave_selected() const {
 		if (weave_cursor >= 0 && weave_cursor < static_cast<int>(weave_order.size()))
 			return weave_order[static_cast<std::size_t>(weave_cursor)];
@@ -449,6 +575,10 @@ struct app::impl {
 		}
 		if (e == Event::Character("p")) return static_cast<void>(w.prune(sel)), true;
 		if (e == Event::Character("P")) return static_cast<void>(w.restore(sel)), true;
+		if (e == Event::Character("s")) {
+			spawn_siblings(sel, 3);  // three branches, streamed in parallel
+			return true;
+		}
 		if (e == Event::Character("m")) {
 			static_cast<void>(w.set_bookmark(sel, !w.bookmarked(sel).value_or(false)));
 			return true;
@@ -605,8 +735,9 @@ int app::run() {
 			const bool dark = s.caps.background ? s.caps.dark : true;
 			return s.wiz.render(s.wiz.preview_theme(dark), now_ms());
 		}
-		Element body = s.in_weave ? s.weave_view() : s.transcript_view();
-		Element input = s.in_weave ? hbox({filler()}) : s.comp.render(s.th);
+		const bool loom = s.spawning || s.spawn_done;
+		Element body = loom ? s.spawn_view() : (s.in_weave ? s.weave_view() : s.transcript_view());
+		Element input = (s.in_weave || loom) ? hbox({filler()}) : s.comp.render(s.th);
 		return vbox({s.header(), body | flex, input, s.statusbar()});
 	});
 
@@ -622,6 +753,17 @@ int app::run() {
 			return handled;
 		}
 		if (e == Event::Custom) return true;  // a worker asked for a frame
+		// the loom owns the keyboard while branches stream.
+		if (s.spawning || s.spawn_done) {
+			if (s.spawning) {
+				if (e == Event::Escape) s.spawn_stop = true;
+			} else {
+				s.siblings.clear();
+				s.spawn_done = false;
+				s.in_weave = true;  // back to the tree to adopt a branch
+			}
+			return true;
+		}
 		if (e == Event::CtrlW) {
 			s.in_weave = !s.in_weave;
 			s.weave_note.clear();

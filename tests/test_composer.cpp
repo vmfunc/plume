@@ -66,7 +66,8 @@ TEST_CASE("ci( changes inside parentheses") {
 	type(c, "a (b c) d");
 	static_cast<void>(c.handle(Event::Escape));
 	type(c, "0");
-	for (int i = 0; i < 4; ++i) static_cast<void>(c.handle(Event::Character("l")));  // move inside ()
+	for (int i = 0; i < 4; ++i)
+		static_cast<void>(c.handle(Event::Character("l")));  // move inside ()
 	type(c, "ci(");
 	CHECK(c.value() == "a () d");
 	CHECK(c.insert_mode());
