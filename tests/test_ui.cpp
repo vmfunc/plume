@@ -66,6 +66,19 @@ TEST_CASE("code fences highlight keywords, strings and a language badge") {
 	CHECK(s.find("\"hi\"") != std::string::npos);
 }
 
+TEST_CASE("a plume widget directive renders as a rich element") {
+	const theme th = rose_pine();
+	const std::string weather =
+	    R"({"type":"weather","location":"san francisco","temp_c":18,"condition":"fog"})";
+	const std::string s = render(ui::render_widget(th, weather), 60, 6);
+	CHECK(s.find("san francisco") != std::string::npos);
+	CHECK(s.find("18") != std::string::npos);
+	CHECK(s.find("fog") != std::string::npos);
+	// malformed json degrades to a labelled box, never crashes.
+	const std::string bad = render(ui::render_widget(th, "{not json"), 40, 4);
+	CHECK(bad.find("widget") != std::string::npos);
+}
+
 TEST_CASE("image half-block node renders cells for a decoded bitmap") {
 	img::bitmap bm;
 	bm.width = 8;

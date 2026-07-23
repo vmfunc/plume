@@ -210,11 +210,7 @@ void app::impl::stream_reply(const node_id& parent) {
 	req.params = cfg.defaults;
 	req.params.model = model_id();
 	if (req.params.max_tokens < 1024) req.params.max_tokens = 4096;
-	std::string sys = system_prompt;
-	if (!compaction_summary.empty())
-		sys += (sys.empty() ? "" : "\n\n") + std::string("summary of earlier turns: ") +
-		       compaction_summary;
-	if (!sys.empty()) req.system = sys;
+	if (std::string sys = effective_system(); !sys.empty()) req.system = sys;
 	req.messages = context_upto(parent);
 	req.tools = tool_defs();
 	req.cache_prefix = true;

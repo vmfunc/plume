@@ -262,6 +262,8 @@ Element highlight_line(const theme& th, const std::string& ln) {
 Element body_block(const theme& th, const std::string& body) {
 	Elements lines;
 	bool in_code = false;
+	bool in_widget = false;  // inside a ```plume widget directive
+	std::string widget_src;
 	std::size_t start = 0;
 	const std::string text_body = body.empty() ? " " : body;
 	while (start <= text_body.size()) {
@@ -269,11 +271,21 @@ Element body_block(const theme& th, const std::string& body) {
 		const std::string ln =
 		    text_body.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
 		if (ln.rfind("```", 0) == 0) {
-			in_code = !in_code;
 			const std::string lang = ln.substr(3);
-			if (in_code && !lang.empty())
-				lines.push_back(hbox({text(" " + lang + " ") | color(col(th.p.base)) |
-				                      bgcolor(col(th.p.pine))}));  // language badge
+			if (in_widget) {  // closing fence: render the accumulated directive
+				in_widget = false;
+				lines.push_back(render_widget(th, widget_src));
+			} else if (!in_code && (lang == "plume" || lang == "plume-widget")) {
+				in_widget = true;
+				widget_src.clear();
+			} else {
+				in_code = !in_code;
+				if (in_code && !lang.empty())
+					lines.push_back(hbox({text(" " + lang + " ") | color(col(th.p.base)) |
+					                      bgcolor(col(th.p.pine))}));  // language badge
+			}
+		} else if (in_widget) {
+			widget_src += ln + "\n";
 		} else if (in_code) {
 			lines.push_back(hbox({text("  "), highlight_line(th, ln)}));
 		} else {
@@ -282,6 +294,8 @@ Element body_block(const theme& th, const std::string& body) {
 		if (nl == std::string::npos) break;
 		start = nl + 1;
 	}
+	if (in_widget)  // still streaming in: show a quiet placeholder
+		lines.push_back(text("  … building widget") | color(col(th.p.muted)) | dim);
 	return vbox(std::move(lines));
 }
 

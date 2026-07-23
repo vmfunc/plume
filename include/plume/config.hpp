@@ -19,6 +19,7 @@ struct ui_config {
 	std::string density = "cozy";  // cozy | compact
 	bool zen = false;              // hide all chrome
 	bool sidebar = true;           // show the conversation sidebar on start
+	bool widgets = true;           // let the model render ```plume widgets
 };
 
 struct keys_config {

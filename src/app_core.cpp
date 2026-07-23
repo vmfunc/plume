@@ -136,6 +136,9 @@ void app::impl::run_command(const std::string& name, const std::string& arg) {
 		toggle_sidebar();
 	} else if (name == "cost") {
 		open_cost();
+	} else if (name == "plan") {
+		plan_mode = !plan_mode;
+		toast = plan_mode ? "plan mode on" : "plan mode off";
 	} else if (name == "inspect") {
 		open_inspect();
 	} else if (name == "mouse") {
@@ -305,11 +308,7 @@ void app::impl::send(const std::string& raw) {
 	req.params = cfg.defaults;
 	req.params.model = model_id();
 	if (req.params.max_tokens < 1024) req.params.max_tokens = 4096;
-	std::string sys = system_prompt;
-	if (!compaction_summary.empty())
-		sys += (sys.empty() ? "" : "\n\n") + std::string("summary of earlier turns: ") +
-		       compaction_summary;
-	if (!sys.empty()) req.system = sys;
+	if (std::string sys = effective_system(); !sys.empty()) req.system = sys;
 	const std::size_t begin =
 	    compaction_summary.empty() ? 0 : std::min(compaction_boundary, transcript.size());
 	for (std::size_t i = begin; i < transcript.size(); ++i) {

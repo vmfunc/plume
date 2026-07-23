@@ -63,4 +63,9 @@ ftxui::Element message_card(const theme&, plume::role, const std::string& body,
 ftxui::Element streaming_card(const theme&, const std::string& text, const std::string& thinking,
                               bool show_think, bool compact, std::int64_t ms, bool reduce_motion);
 
+// render a model-emitted ```plume widget directive (json) as a rich terminal
+// element: weather, table, card, progress, chart, checklist. falls back to a
+// card, or the raw text if the json is malformed / still streaming.
+ftxui::Element render_widget(const theme&, const std::string& json);
+
 }  // namespace plume::ui

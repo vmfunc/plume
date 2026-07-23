@@ -88,7 +88,7 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 30> kActions = {{
+constexpr std::array<action, 31> kActions = {{
     {"weave", "open the loom", false},
     {"autoweave", "toggle auto-fan <k>", true},
     {"models", "pick a model (ctrl-l)", false},
@@ -114,6 +114,7 @@ constexpr std::array<action, 30> kActions = {{
     {"motion", "toggle animations", false},
     {"settings", "preferences (click statusbar)", false},
     {"sidebar", "toggle the sidebar", false},
+    {"plan", "toggle plan-first mode", false},
     {"cost", "token + spend dashboard", false},
     {"inspect", "raw node + nerd stats", false},
     {"mouse", "toggle mouse capture", false},
@@ -532,6 +533,28 @@ struct app::impl {
 		if (pe && !pe->default_model.empty()) return pe->default_model;
 		if (!cfg.defaults.model.empty()) return cfg.defaults.model;
 		return "claude-opus-4-8";
+	}
+
+	bool plan_mode = false;  // ask the model to plan before it answers
+
+	// the full system prompt for a request: the user's system prompt, the plan-
+	// mode directive, the widget protocol, and any compaction summary.
+	std::string effective_system() const {
+		std::string sys = system_prompt;
+		auto add = [&](const std::string& s) { sys += (sys.empty() ? "" : "\n\n") + s; };
+		if (plan_mode)
+			add("Before doing the work, lay out a short numbered plan of your approach and stop "
+			    "for confirmation. Only proceed once the user approves.");
+		if (cfg.ui.widgets)
+			add("You can render rich terminal widgets when a structured visual is clearer than "
+			    "prose. Emit a fenced block tagged `plume` holding a JSON object with a \"type\": "
+			    "weather {location, temp_c|temp_f, condition, forecast:[{day,hi,lo}]}; table "
+			    "{columns:[...], rows:[[...]]}; card {title, fields:{k:v}}; progress {label, "
+			    "value:0..1}; chart {label, bars:[{label,value}]}; checklist "
+			    "{items:[{text,done}]}. "
+			    "Use them only when they genuinely help; keep prose outside the block.");
+		if (!compaction_summary.empty()) add("summary of earlier turns: " + compaction_summary);
+		return sys;
 	}
 
 	void reload_transcript() {

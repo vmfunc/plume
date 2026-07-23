@@ -24,6 +24,10 @@ Element app::impl::header() {
 		bar.push_back(text("  "));
 		bar.push_back(ui::pill(th, role, th.p.iris));
 	}
+	if (plan_mode) {
+		bar.push_back(text("  "));
+		bar.push_back(ui::pill(th, "plan", th.p.gold));
+	}
 	bar.push_back(filler());
 	bar.push_back(text(in_weave ? "weave " : "") | color(col(th.p.foam)) | dim);
 	return vbox({hbox(std::move(bar)), separator() | color(col(th.p.hl_med))});

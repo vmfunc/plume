@@ -104,6 +104,7 @@ result<config> load_config(const std::string& path) {
 		c.ui.density = (*ui)["density"].value_or(c.ui.density);
 		c.ui.zen = (*ui)["zen"].value_or(c.ui.zen);
 		c.ui.sidebar = (*ui)["sidebar"].value_or(c.ui.sidebar);
+		c.ui.widgets = (*ui)["widgets"].value_or(c.ui.widgets);
 	}
 
 	if (auto keys = tbl["keys"].as_table()) {
@@ -205,7 +206,8 @@ result<void> save_config(const config& c, const std::string& path) {
 	o << "density = " << quote(c.ui.density) << "\n";
 	o << "reduce_motion = " << (c.ui.reduce_motion ? "true" : "false") << "\n";
 	o << "zen = " << (c.ui.zen ? "true" : "false") << "\n";
-	o << "sidebar = " << (c.ui.sidebar ? "true" : "false") << "\n\n";
+	o << "sidebar = " << (c.ui.sidebar ? "true" : "false") << "\n";
+	o << "widgets = " << (c.ui.widgets ? "true" : "false") << "\n\n";
 
 	o << "[keys]\n";
 	o << "preset = " << quote(c.keys.preset) << "\n\n";
