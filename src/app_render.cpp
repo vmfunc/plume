@@ -76,6 +76,8 @@ Element app::impl::transcript_view() {
 		std::string body;
 		std::vector<std::string> thinks;
 		std::vector<std::string> images;  // on-disk paths of attached images
+		std::vector<const tool_use_block*> tu_blocks;
+		std::vector<const tool_result_block*> tr_blocks;
 		if (blocks) {
 			body = message{n.role, *blocks}.plain_text();
 			for (const auto& b : *blocks) {
@@ -84,17 +86,37 @@ Element app::impl::transcript_view() {
 					images.push_back(im->path);
 				if (const auto* dc = std::get_if<document_block>(&b); dc && !dc->path.empty())
 					body = "[pdf: " + dc->path + "]\n" + body;
+				if (const auto* tu = std::get_if<tool_use_block>(&b)) tu_blocks.push_back(tu);
+				if (const auto* tr = std::get_if<tool_result_block>(&b)) tr_blocks.push_back(tr);
 			}
 		} else {
 			body = n.content_json;
 		}
-		Element card =
-		    ui::message_card(th, n.role, body, thinks, show_think, cmp, n.model, n.tokens_out);
-		if (cursor_on && idx == transcript_sel) {
-			card = card | bgcolor(col(th.p.hl_low));  // the selected turn
-			focus_at = static_cast<int>(out.size());
+		// a turn that is only tool traffic skips the empty prose card.
+		const bool tools_only = body.empty() && (!tu_blocks.empty() || !tr_blocks.empty());
+		if (!tools_only) {
+			Element card =
+			    ui::message_card(th, n.role, body, thinks, show_think, cmp, n.model, n.tokens_out);
+			if (cursor_on && idx == transcript_sel) {
+				card = card | bgcolor(col(th.p.hl_low));  // the selected turn
+				focus_at = static_cast<int>(out.size());
+			}
+			out.push_back(hot(std::move(card), hit_kind::message, idx));  // click selects
 		}
-		out.push_back(hot(std::move(card), hit_kind::message, idx));  // click selects
+		for (const auto* tu : tu_blocks)  // a tool call, with its arguments
+			out.push_back(vbox({hbox({text("  ▸ tool ") | color(col(th.p.iris)) | bold,
+			                          text(tu->name) | color(col(th.p.iris))}),
+			                    hbox({text("    "),
+			                          tool_args_table(tu->input_json.empty() ? "{}" : tu->input_json)})}) |
+			              borderRounded | color(col(th.p.hl_med)));
+		for (const auto* tr : tr_blocks) {  // its result, error-tinted
+			const rgb tint = tr->is_error ? th.p.love : th.p.foam;
+			std::string content = tr->content.substr(0, 500);
+			out.push_back(hbox({text("  ⟵ ") | color(col(tint)),
+			                    paragraph(content.empty() ? "(empty)" : content) |
+			                        color(col(th.p.subtle))}) |
+			              borderRounded | color(col(th.p.hl_low)));
+		}
 		if (cursor_on && idx == transcript_sel) {                     // the action bar
 			auto tok = [&](char a, const char* label) {
 				return hot(text(std::string(" ") + label + " ") | color(col(th.p.foam)),
