@@ -79,6 +79,17 @@ TEST_CASE("a plume widget directive renders as a rich element") {
 	CHECK(bad.find("widget") != std::string::npos);
 }
 
+TEST_CASE("a plume fence inside a message renders as a widget, not raw json") {
+	const theme th = rose_pine();
+	const std::string body =
+	    "here you "
+	    "go:\n```plume\n{\"type\":\"card\",\"title\":\"box\",\"fields\":{\"a\":\"1\"}}\n```\ndone";
+	const std::string s =
+	    render(ui::message_card(th, role::assistant, body, {}, false, false, "m", 0), 60, 10);
+	CHECK(s.find("box") != std::string::npos);       // the card title
+	CHECK(s.find("\"type\"") == std::string::npos);  // raw json is not shown
+}
+
 TEST_CASE("custom widgets compose primitives into a tree") {
 	const theme th = rose_pine();
 	const std::string tree =
