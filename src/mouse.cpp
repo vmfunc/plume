@@ -55,7 +55,10 @@ bool app::impl::handle_mouse(const Mouse& m) {
 			if (dbl) handle_weave(Event::Return);  // double-click adopts
 			return true;
 		case hit_kind::overlay_row:
-			if (ov == overlay::settings) {
+			if (ov == overlay::none && !slash_matches().empty()) {
+				slash_sel = hit->index;  // click a slash suggestion
+				accept_slash();
+			} else if (ov == overlay::settings) {
 				settings_sel = hit->index;
 				handle_settings(Event::Return);  // click a setting to cycle it
 			} else {

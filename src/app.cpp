@@ -157,7 +157,9 @@ int app::run() {
 		const bool loom = s.spawning || s.spawn_done;
 		Element body = loom ? s.spawn_view() : (s.in_weave ? s.weave_view() : s.transcript_view());
 		Element input = (s.in_weave || loom) ? hbox({filler()}) : s.comp.render(s.th);
-		Element main = vbox({body | flex, input});
+		Element main = (!s.in_weave && !loom && !s.slash_matches().empty())
+		                   ? vbox({body | flex, s.slash_popup(), input})
+		                   : vbox({body | flex, input});
 		// the sidebar wraps the main column (header/statusbar span full width). the
 		// loom needs the room, so the sidebar steps aside while branches stream.
 		Element mid = main;
@@ -290,6 +292,15 @@ int app::run() {
 			if (!s.follow_tail && s.transcript_sel >= 0)
 				for (char a : {'y', 'c', 'e', 'r', 'b', 'q', 'x'})
 					if (e == Event::Character(std::string(1, a))) return s.message_action(a), true;
+		}
+		// slash-command autocomplete: cycle and accept the dropdown suggestions.
+		if (const auto sm = s.slash_matches(); !sm.empty()) {
+			const int n = static_cast<int>(sm.size());
+			if (e == Event::Tab || e == Event::ArrowDown || e == Event::CtrlN)
+				return s.slash_sel = (s.slash_sel + 1) % n, true;
+			if (e == Event::ArrowUp || e == Event::CtrlP)
+				return s.slash_sel = (s.slash_sel + n - 1) % n, true;
+			if (e == Event::Return) return s.accept_slash(), true;
 		}
 		// recall previously sent lines with the arrows on an empty composer.
 		if (s.comp.insert_mode() && s.comp.value().empty()) {

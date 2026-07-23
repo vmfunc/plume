@@ -134,6 +134,27 @@ Element app::impl::transcript_view() {
 	return view;
 }
 
+Element app::impl::slash_popup() {
+	const auto m = slash_matches();
+	if (m.empty()) return text("");
+	slash_sel = std::clamp(slash_sel, 0, static_cast<int>(m.size()) - 1);
+	Elements rows;
+	for (int i = 0; i < static_cast<int>(m.size()); ++i) {
+		const char* hint = "";
+		for (const auto& a : kActions)
+			if (m[static_cast<std::size_t>(i)] == a.name) hint = a.hint;
+		const bool on = i == slash_sel;
+		Element row = hbox({text(on ? " ▸ /" : "   /") | color(col(on ? th.p.iris : th.p.muted)),
+		                    text(m[static_cast<std::size_t>(i)]) |
+		                        color(col(on ? th.p.text : th.p.subtle)) | size(WIDTH, EQUAL, 12),
+		                    text(hint) | color(col(th.p.muted)) | dim});
+		if (on) row = row | bgcolor(col(th.p.hl_low));
+		rows.push_back(hot(std::move(row), hit_kind::overlay_row, i));
+	}
+	return vbox(std::move(rows)) | borderRounded | color(col(th.p.hl_high)) |
+	       bgcolor(col(th.p.surface)) | size(HEIGHT, LESS_THAN, 9);
+}
+
 Element app::impl::weave_view() {
 	weave w(*db);
 	auto v = w.view(convo, false);

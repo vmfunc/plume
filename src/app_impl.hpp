@@ -370,6 +370,36 @@ struct app::impl {
 	Element sidebar_view();
 	bool handle_sidebar(const Event& e);
 
+	// inline slash-command autocomplete: a dropdown above the composer while the
+	// line is a bare "/partial" with no argument yet.
+	int slash_sel = 0;
+	std::vector<std::string> slash_matches() const {
+		const std::string v = comp.value();
+		std::vector<std::string> out;
+		if (v.size() < 1 || v[0] != '/' || v.find(' ') != std::string::npos) return out;
+		const std::string_view pat = std::string_view(v).substr(1);
+		for (const auto& a : kActions)
+			if (fuzzy(pat, a.name)) out.emplace_back(a.name);
+		return out;
+	}
+	void accept_slash() {
+		const auto m = slash_matches();
+		if (m.empty()) return;
+		const std::string name =
+		    m[static_cast<std::size_t>(std::clamp(slash_sel, 0, int(m.size()) - 1))];
+		bool takes_arg = false;
+		for (const auto& a : kActions)
+			if (name == a.name) takes_arg = a.takes_arg;
+		if (takes_arg) {
+			comp.set_text("/" + name + " ");
+		} else {
+			comp.clear();
+			run_command(name, "");
+		}
+		slash_sel = 0;
+	}
+	Element slash_popup();
+
 	// the settings overlay (defined in settings_ui.cpp): a live-editing list of
 	// preferences that persist immediately.
 	int settings_sel = 0;
