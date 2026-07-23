@@ -153,7 +153,14 @@ int app::run() {
 		const bool loom = s.spawning || s.spawn_done;
 		Element body = loom ? s.spawn_view() : (s.in_weave ? s.weave_view() : s.transcript_view());
 		Element input = (s.in_weave || loom) ? hbox({filler()}) : s.comp.render(s.th);
-		Element view = vbox({s.header(), body | flex, input, s.statusbar()});
+		Element main = vbox({body | flex, input});
+		// the sidebar wraps the main column (header/statusbar span full width). the
+		// loom needs the room, so the sidebar steps aside while branches stream.
+		Element mid = main;
+		if (s.sb != impl::sidebar_mode::hidden && !loom)
+			mid = hbox({s.sidebar_view() | size(WIDTH, EQUAL, 30),
+			            separator() | color(col(s.th.p.hl_med)), main | flex});
+		Element view = vbox({s.header(), mid | flex, s.statusbar()});
 		if (s.ov != impl::overlay::none) view = dbox({view, s.overlay_view()});
 		return view;
 	});
@@ -209,6 +216,12 @@ int app::run() {
 			s.open_models();
 			return true;
 		}
+		if (e == Event::CtrlB) {  // toggle the conversation sidebar
+			s.toggle_sidebar();
+			return true;
+		}
+		// a focused sidebar owns the keyboard (open-but-unfocused lets you type).
+		if (s.sb == impl::sidebar_mode::focused) return s.handle_sidebar(e);
 		// the loom owns the keyboard while branches stream.
 		if (s.spawning || s.spawn_done) {
 			if (s.spawning) {

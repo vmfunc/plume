@@ -123,8 +123,8 @@ Element app::impl::compare_view() {
 	const auto lb = split_lines(tb);
 	// a set-based line diff: a line only in one side is tinted (removed love / added
 	// foam); shared lines stay muted. cheap, order-insensitive, readable.
-	const std::set<std::string> sa(la.begin(), la.end());
-	const std::set<std::string> sb(lb.begin(), lb.end());
+	const std::set<std::string> set_a(la.begin(), la.end());
+	const std::set<std::string> set_b(lb.begin(), lb.end());
 
 	auto column = [&](const std::vector<std::string>& lines, const std::set<std::string>& other,
 	                  rgb only_tint, const std::string& head, rgb head_tint) {
@@ -138,8 +138,9 @@ Element app::impl::compare_view() {
 		return vbox(std::move(rows)) | yframe | flex | borderRounded | color(col(head_tint));
 	};
 
-	Element cols = hbox({column(la, sb, th.p.love, "A  " + cmp_a.str().substr(0, 12), th.p.rose),
-	                     column(lb, sa, th.p.foam, "B  " + cmp_b.str().substr(0, 12), th.p.iris)});
+	Element cols =
+	    hbox({column(la, set_b, th.p.love, "A  " + cmp_a.str().substr(0, 12), th.p.rose),
+	          column(lb, set_a, th.p.foam, "B  " + cmp_b.str().substr(0, 12), th.p.iris)});
 	return vbox(
 	           {hbox({ui::gradient_text("compare", {th.p.love, th.p.iris, th.p.foam}) | bold,
 	                  text("  lines unique to a side are tinted") | color(col(th.p.subtle)) | dim}),

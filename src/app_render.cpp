@@ -208,6 +208,7 @@ Element app::impl::overlay_view() {
 		};
 		return ui::overlay(th, "keys",
 		                   vbox({row("ctrl-k", "command palette"),
+		                         row("ctrl-b", "conversation sidebar"),
 		                         row("ctrl-l", "model picker"),
 		                         row("ctrl-p", "conversation picker"),
 		                         row("ctrl-f", "search everything"),

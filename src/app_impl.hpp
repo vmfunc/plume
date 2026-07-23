@@ -298,6 +298,23 @@ struct app::impl {
 	Element models_view();
 	bool handle_models(const Event& e);
 	void choose_model(const std::string& id);
+
+	// the conversation sidebar (defined in sidebar.cpp). a three-state toggle:
+	// hidden, focused (owns the keyboard), or open (visible while you type).
+	enum class sidebar_mode : std::uint8_t { hidden, focused, open };
+	sidebar_mode sb = sidebar_mode::hidden;
+	int sb_cursor = 0;
+	std::string sb_filter;
+	bool sb_filtering = false;
+	bool sb_renaming = false;
+	std::string sb_rename_buf;
+	int sb_confirm_delete = -1;  // list index awaiting a delete confirmation
+	std::vector<conversation> sb_convos;
+	void toggle_sidebar();
+	void refresh_sidebar();
+	std::vector<const conversation*> sidebar_list() const;
+	Element sidebar_view();
+	bool handle_sidebar(const Event& e);
 	void recover_convo_model() {
 		convo_model.clear();
 		for (auto it = transcript.rbegin(); it != transcript.rend(); ++it)

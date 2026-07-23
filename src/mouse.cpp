@@ -20,6 +20,8 @@ bool app::impl::handle_mouse(const Mouse& m) {
 		const bool up = m.button == Mouse::WheelUp;
 		if (ov != overlay::none)
 			handle_overlay(up ? Event::ArrowUp : Event::ArrowDown);
+		else if (sb == sidebar_mode::focused)
+			handle_sidebar(up ? Event::ArrowUp : Event::ArrowDown);
 		else if (in_weave)
 			handle_weave(up ? Event::ArrowUp : Event::ArrowDown);
 		else if (!spawning && !spawn_done)
@@ -59,6 +61,15 @@ bool app::impl::handle_mouse(const Mouse& m) {
 		case hit_kind::statusbar_model:
 			open_models();  // click the model pill to pick one
 			return true;
+		case hit_kind::sidebar_row: {
+			const auto list = sidebar_list();  // click switches without stealing focus
+			if (hit->index >= 0 && hit->index < static_cast<int>(list.size())) {
+				switch_convo(list[static_cast<std::size_t>(hit->index)]->id);
+				sb_cursor = hit->index;
+			}
+			return true;
+		}
+		case hit_kind::sidebar_toggle: toggle_sidebar(); return true;
 		default: return true;
 	}
 }
