@@ -18,12 +18,31 @@ as a flake input:
 
     inputs.plume.url = "github:vmfunc/plume";
 
-or via the home-manager module:
+or via the home-manager module, which writes `config.toml` from typed options so a
+nix user never has to touch the wizard:
 
     programs.plume = {
       enable = true;
-      settings.provider = "anthropic";
+      theme = "rose-pine-moon";
+      keybindings = "vim";
+      defaultProvider = "anthropic";
+      # the key never lands in the nix store: read it from a command or the keychain
+      providers.anthropic = {
+        kind = "anthropic";
+        authSource = "key_cmd";
+        authValue = "pass show anthropic/api";
+      };
+      defaults = { thinking = "adaptive"; effort = "high"; };
+      mcpServers.notes = {
+        command = "mcp-server-filesystem";
+        args = [ "/home/me/notes" ];
+        approval = "allowlist";
+        allow = [ "read_file" ];
+      };
     };
+
+every option is discoverable and typed; anything not covered goes in `settings`,
+which is merged on top using the raw toml schema.
 
 ## quickstart
 

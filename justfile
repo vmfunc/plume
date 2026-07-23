@@ -69,3 +69,17 @@ demo:
 # start fresh: drop the local database
 db-reset:
     rm -f "${XDG_DATA_HOME:-$HOME/.local/share}/plume/plume.sqlite"*
+
+# wipe config, data and state so the next run is a true first run (the wizard).
+# `plume setup` re-runs the wizard without touching your history; this clears it.
+reset:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cfg="${XDG_CONFIG_HOME:-$HOME/.config}/plume"
+    data="${XDG_DATA_HOME:-$HOME/.local/share}/plume"
+    state="${XDG_STATE_HOME:-$HOME/.local/state}/plume"
+    echo "removing:"; printf '  %s\n' "$cfg" "$data" "$state"
+    read -rp "wipe plume config, history and state? [y/N] " ok
+    [[ "$ok" == [yY] ]] || { echo "left alone."; exit 0; }
+    rm -rf "$cfg" "$data" "$state"
+    echo "clean. next 'plume' run drops into the wizard."
