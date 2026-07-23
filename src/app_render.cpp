@@ -47,6 +47,7 @@ Element app::impl::statusbar() {
 			line.push_back(text(s.text) | color(col(th.p.rose)));
 		}
 	line.push_back(filler());
+	if (autoweave) line.push_back(ui::pill(th, "autoweave", th.p.pine));
 	if (!pending_attach.empty())
 		line.push_back(
 		    ui::pill(th, "⧉ " + std::to_string(pending_attach.size()) + " staged", th.p.gold));
@@ -132,8 +133,8 @@ Element app::impl::weave_view() {
 	if (rows.empty()) rows.push_back(text("  the tree is empty") | color(col(th.p.muted)));
 	Element tree = vbox(std::move(rows)) | yframe | flex;
 	Element help = text(
-	                   "hjkl move · enter adopt · p prune · P restore · m bookmark · g graft · "
-	                   "x export dot · ctrl-w back") |
+	                   "hjkl move · enter adopt · s spawn · r regen · c compare · p/P prune · "
+	                   "m bookmark · g graft · x dot · ctrl-w back") |
 	               color(col(th.p.subtle)) | dim;
 	Elements bottom = {help};
 	if (!weave_note.empty()) bottom.push_back(text("  " + weave_note) | color(col(th.p.gold)));
@@ -205,6 +206,7 @@ Element app::impl::overlay_view() {
 		                         row("enter", "adopt branch"),
 		                         row("s", "spawn 3 branches"),
 		                         row("r", "regenerate"),
+		                         row("c", "compare two leaves"),
 		                         row("e", "edit + refork"),
 		                         row("y", "yank code"),
 		                         row("t", "toggle thinking"),

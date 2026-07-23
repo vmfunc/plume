@@ -8,6 +8,7 @@
 #include <array>
 #include <atomic>
 #include <cctype>
+#include <charconv>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -61,14 +62,14 @@ std::int64_t now_ms() {
 
 // copy to the system clipboard via OSC 52. the terminal consumes the escape
 // immediately, so it survives ftxui repainting the cells around it.
-void osc52_copy(std::string_view s) {
+[[maybe_unused]] void osc52_copy(std::string_view s) {
 	const std::string seq = "\x1b]52;c;" + detail::base64_encode(s) + "\x07";
 	std::fwrite(seq.data(), 1, seq.size(), stdout);
 	std::fflush(stdout);
 }
 
 // the last fenced code block if there is one, else the whole text.
-std::string last_code_block(const std::string& body) {
+[[maybe_unused]] std::string last_code_block(const std::string& body) {
 	std::size_t close = body.rfind("```");
 	if (close == std::string::npos) return body;
 	std::size_t open = body.rfind("```", close == 0 ? 0 : close - 1);
@@ -85,8 +86,9 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 20> kActions = {{
+constexpr std::array<action, 21> kActions = {{
     {"weave", "open the loom", false},
+    {"autoweave", "toggle auto-fan <k>", true},
     {"model", "set the model <id>", true},
     {"attach", "attach an image/pdf <path>", true},
     {"params", "show sampling params", false},
@@ -184,6 +186,16 @@ struct app::impl {
 	node_id graft_source;                  // set by the first 'g', consumed by the second
 	std::optional<node_id> refork_parent;  // set by 'e': the next send forks here
 	std::string weave_note;                // transient feedback in the weave detail line
+
+	// compare (§100): two leaves picked with 'c', diffed side by side.
+	bool comparing = false;
+	node_id cmp_a, cmp_b;
+
+	// autoweave (§101): after each of your turns, fan out k continuations up to a
+	// spend cap, so alternatives are always waiting in the loom. off by default.
+	bool autoweave = false;
+	int autoweave_fan = 3;
+	double autoweave_cap = 0.50;  // dollars of turn cost before it stops firing
 
 	wizard wiz;
 	std::string convo_title = "first light";
@@ -491,6 +503,17 @@ struct app::impl {
 		ov_filter.clear();
 		if (name == "weave") {
 			in_weave = true;
+		} else if (name == "autoweave") {
+			if (int k;
+			    !arg.empty() &&
+			    (std::from_chars(arg.data(), arg.data() + arg.size(), k).ec == std::errc{}) &&
+			    k > 0)
+				autoweave_fan = k;
+			autoweave = !autoweave;
+			toast = autoweave ? "autoweave on: fans " + std::to_string(autoweave_fan) +
+			                        " per turn to a $" +
+			                        std::to_string(autoweave_cap).substr(0, 4) + " cap"
+			                  : "autoweave off";
 		} else if (name == "model") {
 			cfg.defaults.model = arg;
 			if (auto it = cfg.providers.find(cfg.default_provider); it != cfg.providers.end())
@@ -853,6 +876,7 @@ struct app::impl {
 			}
 		}
 		notify_done();
+		if (out && !truncated) maybe_autoweave(reply.id);
 	}
 
 	// ring the terminal (or fire an OSC 9 desktop notification) when a turn lands,
@@ -917,82 +941,10 @@ struct app::impl {
 		return {};
 	}
 
-	bool handle_weave(const Event& e) {
-		weave w(*db);
-		auto move = [&](int d) {
-			weave_cursor = std::max(
-			    0, std::min<int>(weave_cursor + d, static_cast<int>(weave_order.size()) - 1));
-		};
-		if (e == Event::Character("j") || e == Event::ArrowDown) return move(1), true;
-		if (e == Event::Character("k") || e == Event::ArrowUp) return move(-1), true;
-		const node_id sel = weave_selected();
-		if (sel.empty()) return false;
-		if (e == Event::Return) {
-			static_cast<void>(w.adopt(convo, sel));
-			reload_transcript();
-			in_weave = false;
-			return true;
-		}
-		if (e == Event::Character("p")) return static_cast<void>(w.prune(sel)), true;
-		if (e == Event::Character("P")) return static_cast<void>(w.restore(sel)), true;
-		if (e == Event::Character("s")) {
-			spawn_siblings(sel, 3);  // three branches, streamed in parallel
-			return true;
-		}
-		if (e == Event::Character("r")) {
-			spawn_siblings(sel, 1);  // regenerate: one fresh alternative
-			return true;
-		}
-		if (e == Event::Character("t")) {
-			show_think = !show_think;
-			weave_note = show_think ? "thinking shown" : "thinking hidden";
-			return true;
-		}
-		if (e == Event::Character("y")) {
-			if (auto n = db->node_of(sel)) {
-				osc52_copy(last_code_block(node_text(*n)));
-				weave_note = "yanked to clipboard";
-			}
-			return true;
-		}
-		if (e == Event::Character("e")) {
-			// pull a turn back into the composer; the next send forks a sibling of it.
-			if (auto n = db->node_of(sel)) {
-				comp.set_text(node_text(*n));
-				refork_parent = n->parent ? std::optional<node_id>(*n->parent) : std::nullopt;
-				in_weave = false;
-				weave_note.clear();
-			}
-			return true;
-		}
-		if (e == Event::Character("m")) {
-			static_cast<void>(w.set_bookmark(sel, !w.bookmarked(sel).value_or(false)));
-			return true;
-		}
-		if (e == Event::Character("g")) {
-			// two-step: first g marks a source subtree, second g grafts it here.
-			if (graft_source.empty()) {
-				graft_source = sel;
-				weave_note = "graft: pick a new parent, then g";
-			} else {
-				auto r = w.graft(graft_source, sel);
-				weave_note = r ? "grafted" : ("graft refused: " + r.error().detail);
-				graft_source = {};
-			}
-			return true;
-		}
-		if (e == Event::Character("x")) {
-			if (auto dot = w.to_dot(convo)) {
-				const std::string path = cfg.state_dir + "/" + convo.str() + ".dot";
-				std::error_code ec;
-				std::filesystem::create_directories(cfg.state_dir, ec);
-				std::ofstream(path) << *dot;
-				weave_note = "wrote " + path;
-			}
-			return true;
-		}
-		return false;
-	}
+	// the weave keymap and the compare view are defined in app_input.cpp.
+	bool handle_weave(const Event& e);
+	Element compare_view();
+	void maybe_autoweave(const node_id& assistant_leaf);
 };
 
 }  // namespace plume

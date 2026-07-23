@@ -142,6 +142,7 @@ int app::run() {
 			const bool dark = s.caps.background ? s.caps.dark : true;
 			return s.wiz.render(s.wiz.preview_theme(dark), now_ms());
 		}
+		if (s.comparing) return vbox({s.header(), s.compare_view() | flex, s.statusbar()});
 		const bool loom = s.spawning || s.spawn_done;
 		Element body = loom ? s.spawn_view() : (s.in_weave ? s.weave_view() : s.transcript_view());
 		Element input = (s.in_weave || loom) ? hbox({filler()}) : s.comp.render(s.th);
@@ -163,6 +164,15 @@ int app::run() {
 		}
 		if (e == Event::Custom) return true;  // a worker asked for a frame
 		s.toast.clear();                      // any keypress dismisses a transient note
+		// the compare view owns the keyboard until dismissed.
+		if (s.comparing) {
+			if (e == Event::Escape || e == Event::Character("q")) {
+				s.comparing = false;
+				s.cmp_a = {};
+				s.cmp_b = {};
+			}
+			return true;
+		}
 		// an open overlay owns the keyboard.
 		if (s.ov != impl::overlay::none) return s.handle_overlay(e);
 		// global overlays (matched by the raw control byte).
