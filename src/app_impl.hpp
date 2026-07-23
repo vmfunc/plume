@@ -221,6 +221,7 @@ struct app::impl {
 	std::int64_t last_click_ms = 0;  // for double-click detection
 	int last_click_index = -1;
 	hit_kind last_click_kind = hit_kind::none;
+	int drag_y = -1;  // last y while dragging the transcript to scroll
 
 	// step the message cursor by delta turns; reaching the last turn re-pins tail.
 	void scroll_transcript(int delta) {

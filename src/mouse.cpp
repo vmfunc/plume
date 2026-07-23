@@ -29,6 +29,17 @@ bool app::impl::handle_mouse(const Mouse& m) {
 		return true;
 	}
 
+	// drag the transcript with the left button held to scroll it, touchpad-style.
+	if (m.motion == Mouse::Moved && m.button == Mouse::Left && ov == overlay::none && !in_weave) {
+		if (drag_y >= 0 && m.y != drag_y) scroll_transcript(drag_y - m.y);
+		drag_y = m.y;
+		return true;
+	}
+	if (m.motion == Mouse::Released) {
+		drag_y = -1;
+		return true;
+	}
+
 	// right-click opens the context menu on a message.
 	if (m.button == Mouse::Right && m.motion == Mouse::Pressed) {
 		if (const hit_region* h = hit_test(m.x, m.y); h && h->kind == hit_kind::message) {
