@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -31,6 +32,7 @@
 #include <set>
 
 #include "composer.hpp"
+#include "mouse.hpp"
 #include "plume/codec.hpp"
 #include "plume/image.hpp"
 #include "plume/mcp.hpp"
@@ -171,6 +173,20 @@ struct app::impl {
 	int transcript_sel = -1;
 	bool follow_tail = true;
 	bool pending_g = false;  // first 'g' of a gg (jump to top)
+
+	// mouse hit-test registry, rebuilt every frame. a deque (never a vector): hot()
+	// hands reflect() a Box& into the element tree, so a reallocation would dangle
+	// every earlier reflect. cleared at the top of each render pass.
+	std::deque<hit_region> regions_;
+	Element hot(Element e, hit_kind k, int index = 0) {
+		regions_.push_back(hit_region{Box{}, k, index});
+		return e | reflect(regions_.back().box);
+	}
+	const hit_region* hit_test(int x, int y) const;
+	bool handle_mouse(const Mouse& m);
+	std::int64_t last_click_ms = 0;  // for double-click detection
+	int last_click_index = -1;
+	hit_kind last_click_kind = hit_kind::none;
 
 	// step the message cursor by delta turns; reaching the last turn re-pins tail.
 	void scroll_transcript(int delta) {

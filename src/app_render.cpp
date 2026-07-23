@@ -89,7 +89,8 @@ Element app::impl::transcript_view() {
 			card = card | bgcolor(col(th.p.hl_low));  // the selected turn
 			focus_at = static_cast<int>(out.size());
 		}
-		out.push_back(std::move(card));
+		out.push_back(hot(std::move(card), hit_kind::message, idx));  // click selects
+
 		for (const auto& path : images)
 			if (const img::bitmap* bm = preview(path))
 				out.push_back(hbox({text("  "), ui::image_halfblock(*bm, 44, 14)}));
@@ -140,7 +141,7 @@ Element app::impl::weave_view() {
 				    focus;
 			else
 				e = hbox({text(" "), e});
-			rows.push_back(e);
+			rows.push_back(hot(std::move(e), hit_kind::weave_node, i));  // click moves cursor
 		}
 	}
 	if (rows.empty()) rows.push_back(text("  the tree is empty") | color(col(th.p.muted)));

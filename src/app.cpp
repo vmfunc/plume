@@ -143,6 +143,7 @@ int app::run() {
 	// no ftxui Input: the composer is a hand-rolled modal editor, so the whole
 	// keyboard is routed by hand.
 	auto root = Renderer([&] {
+		s.regions_.clear();  // rebuild the mouse hit-test table for this frame
 		if (s.wiz.active) {
 			const bool dark = s.caps.background ? s.caps.dark : true;
 			return s.wiz.render(s.wiz.preview_theme(dark), now_ms());
@@ -168,7 +169,11 @@ int app::run() {
 			return handled;
 		}
 		if (e == Event::Custom) return true;  // a worker asked for a frame
-		s.toast.clear();                      // any keypress dismisses a transient note
+		if (e.is_mouse()) {
+			Event ev = e;  // mouse() is non-const; the caught event is const
+			return s.handle_mouse(ev.mouse());
+		}
+		s.toast.clear();  // any keypress dismisses a transient note
 		// the compare view owns the keyboard until dismissed.
 		if (s.comparing) {
 			if (e == Event::Escape || e == Event::Character("q")) {
