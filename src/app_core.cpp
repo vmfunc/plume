@@ -84,12 +84,14 @@ void app::impl::run_command(const std::string& name, const std::string& arg) {
 		            ? "autoweave on: fans " + std::to_string(autoweave_fan) + " per turn to a $" +
 		                  std::to_string(autoweave_cap).substr(0, 4) + " cap"
 		            : "autoweave off";
+	} else if (name == "models") {
+		open_models();
 	} else if (name == "model") {
-		cfg.defaults.model = arg;
-		if (auto it = cfg.providers.find(cfg.default_provider); it != cfg.providers.end())
-			it->second.default_model = arg;
-		persist_config();
-		toast = "model " + arg;
+		if (arg.empty()) {
+			open_models();  // bare /model opens the picker
+		} else {
+			choose_model(arg);  // set it for this conversation
+		}
 	} else if (name == "theme") {
 		const bool dark = caps.background ? caps.dark : true;
 		if (auto t = resolve_theme(arg, cfg.config_dir + "/themes", dark)) {
@@ -166,6 +168,7 @@ bool app::impl::handle_overlay(const Event& e) {
 		}
 		return true;  // swallow other keys while the prompt is up
 	}
+	if (ov == overlay::models) return handle_models(e);
 	if (e == Event::Escape) {
 		ov = overlay::none;
 		return true;

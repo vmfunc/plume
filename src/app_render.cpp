@@ -30,7 +30,7 @@ Element app::impl::statusbar() {
 	const float frac = context_window > 0 ? static_cast<float>(tot.input) / context_window : 0.f;
 	auto dot = [&] { return text(" · ") | color(col(th.p.muted)); };
 	Elements line = {
-	    ui::pill(th, model_id(), th.p.iris),
+	    hot(ui::pill(th, model_id(), th.p.iris), hit_kind::statusbar_model),  // click to pick
 	    text(" "),
 	    ui::meter(th, frac, 12),
 	    dot(),
@@ -184,6 +184,7 @@ Element app::impl::spawn_view() {
 }
 
 Element app::impl::overlay_view() {
+	if (ov == overlay::models) return models_view();
 	if (ov == overlay::tool_approve && !tool_queue.empty()) {
 		const auto& pt = tool_queue.front();
 		const std::string extra =
@@ -207,10 +208,13 @@ Element app::impl::overlay_view() {
 		};
 		return ui::overlay(th, "keys",
 		                   vbox({row("ctrl-k", "command palette"),
+		                         row("ctrl-l", "model picker"),
 		                         row("ctrl-p", "conversation picker"),
 		                         row("ctrl-f", "search everything"),
 		                         row("ctrl-w", "open the loom"),
 		                         row("ctrl-e", "composer to $EDITOR"),
+		                         row("j/k · G", "scroll history · jump to live"),
+		                         row("wheel", "scroll · click to select"),
 		                         row("/", "slash command (insert)"),
 		                         row("? ", "this cheatsheet (normal)"),
 		                         row("esc", "stop / close"),

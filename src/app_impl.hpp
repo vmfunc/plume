@@ -88,9 +88,10 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 21> kActions = {{
+constexpr std::array<action, 22> kActions = {{
     {"weave", "open the loom", false},
     {"autoweave", "toggle auto-fan <k>", true},
+    {"models", "pick a model (ctrl-l)", false},
     {"model", "set the model <id>", true},
     {"attach", "attach an image/pdf <path>", true},
     {"params", "show sampling params", false},
@@ -263,14 +264,48 @@ struct app::impl {
 	int spawn_pending = 0;
 
 	// overlays: the command palette, the cheatsheet, the conversation picker,
-	// search, and the mcp tool-approval prompt. only one is up at a time.
-	enum class overlay : std::uint8_t { none, palette, cheatsheet, picker, search, tool_approve };
+	// search, the model picker, and the mcp tool-approval prompt. one at a time.
+	enum class overlay : std::uint8_t {
+		none,
+		palette,
+		cheatsheet,
+		picker,
+		search,
+		models,
+		tool_approve,
+	};
 	overlay ov = overlay::none;
 	std::string ov_filter;
 	int ov_sel = 0;
 	bool search_global = false;
 	std::vector<search_hit> search_hits;
 	std::vector<conversation> picker_convos;
+
+	// model picker (defined in app_models.cpp). the list is fetched off-thread and
+	// cached to disk; convo_model is a per-conversation override recovered from the
+	// last assistant turn's model, and recent_models is the MRU shown on top.
+	std::vector<model_info> model_list;
+	std::atomic<bool> models_loading{false};
+	std::string models_error;
+	std::thread models_worker;
+	std::vector<std::string> recent_models;
+	std::string convo_model;
+	void open_models();
+	void fetch_models(bool force);
+	void save_models_snapshot() const;
+	void load_models_snapshot();
+	std::vector<const model_info*> filtered_models() const;
+	Element models_view();
+	bool handle_models(const Event& e);
+	void choose_model(const std::string& id);
+	void recover_convo_model() {
+		convo_model.clear();
+		for (auto it = transcript.rbegin(); it != transcript.rend(); ++it)
+			if (it->role == role::assistant && !it->model.empty()) {
+				convo_model = it->model;
+				break;
+			}
+	}
 
 	std::string system_prompt;       // per-conversation system prompt (/system)
 	std::string compaction_summary;  // set by /compact; prepended to context
@@ -290,6 +325,7 @@ struct app::impl {
 		alive = false;
 		if (worker.joinable()) worker.join();
 		if (compact_worker.joinable()) compact_worker.join();
+		if (models_worker.joinable()) models_worker.join();
 		for (auto& s : siblings)
 			if (s->worker.joinable()) s->worker.join();
 		if (ticker.joinable()) ticker.join();
@@ -303,6 +339,7 @@ struct app::impl {
 	}
 
 	std::string model_id() const {
+		if (!convo_model.empty()) return convo_model;  // per-conversation override
 		const provider_entry* pe = cfg.active_provider();
 		if (pe && !pe->default_model.empty()) return pe->default_model;
 		if (!cfg.defaults.model.empty()) return cfg.defaults.model;
@@ -376,6 +413,8 @@ struct app::impl {
 		compaction_summary.clear();
 		compaction_boundary = 0;
 		reload_transcript();
+		scroll_tail();
+		recover_convo_model();
 	}
 
 	void switch_convo(const convo_id& id) {
@@ -385,6 +424,8 @@ struct app::impl {
 		compaction_summary.clear();
 		compaction_boundary = 0;
 		reload_transcript();
+		scroll_tail();
+		recover_convo_model();
 	}
 
 	void do_export(const std::string& fmt) {
@@ -476,6 +517,7 @@ struct app::impl {
 		weave w(*db);
 		static_cast<void>(w.adopt(h.convo, h.node));
 		reload_transcript();
+		recover_convo_model();
 		ov = overlay::none;
 	}
 

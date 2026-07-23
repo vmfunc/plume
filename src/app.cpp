@@ -41,6 +41,7 @@ result<app> app::create(config cfg) {
 		s.convo = c.id;
 	}
 	s.reload_transcript();
+	s.recover_convo_model();  // reflect the thread's last model in the pill
 
 	// build the provider if one is configured and reachable.
 	if (std::getenv("PLUME_MOCK")) {
@@ -185,22 +186,27 @@ int app::run() {
 		}
 		// an open overlay owns the keyboard.
 		if (s.ov != impl::overlay::none) return s.handle_overlay(e);
-		// global overlays (matched by the raw control byte).
-		if (e.input() == std::string(1, static_cast<char>(11))) {  // ctrl-k
+		// global overlays. ftxui delivers control keys as named events (like the
+		// Event::CtrlC above); the raw-byte form never matched, so use the names.
+		if (e == Event::CtrlK) {  // command palette
 			s.ov = impl::overlay::palette;
 			s.ov_filter.clear();
 			s.ov_sel = 0;
 			return true;
 		}
-		if (e.input() == std::string(1, static_cast<char>(16)) && s.db) {  // ctrl-p: picker
+		if (e == Event::CtrlP && s.db) {  // conversation picker
 			s.ov = impl::overlay::picker;
 			s.ov_filter.clear();
 			s.ov_sel = 0;
 			if (auto list = s.db->conversations()) s.picker_convos = *list;
 			return true;
 		}
-		if (e.input() == std::string(1, static_cast<char>(6))) {  // ctrl-f: search everything
+		if (e == Event::CtrlF) {  // search everything
 			s.run_search("", true);
+			return true;
+		}
+		if (e == Event::CtrlL) {  // model picker
+			s.open_models();
 			return true;
 		}
 		// the loom owns the keyboard while branches stream.
@@ -254,10 +260,8 @@ int app::run() {
 				return s.scroll_transcript(-1), true;
 			if (e == Event::Character("j") || e == Event::ArrowDown)
 				return s.scroll_transcript(1), true;
-			if (e == Event::PageUp || e.input() == std::string(1, 0x15))  // ctrl-u
-				return s.scroll_transcript(-4), true;
-			if (e == Event::PageDown || e.input() == std::string(1, 0x04))  // ctrl-d
-				return s.scroll_transcript(4), true;
+			if (e == Event::PageUp || e == Event::CtrlU) return s.scroll_transcript(-4), true;
+			if (e == Event::PageDown || e == Event::CtrlD) return s.scroll_transcript(4), true;
 			if (e == Event::Character("G") || e == Event::End) return s.scroll_tail(), true;
 			if (e == Event::Home) return s.scroll_top(), true;
 			if (e == Event::Escape && !s.follow_tail) return s.scroll_tail(), true;

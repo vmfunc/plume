@@ -57,7 +57,7 @@ bool app::impl::handle_mouse(const Mouse& m) {
 			handle_overlay(Event::Return);  // activate the row
 			return true;
 		case hit_kind::statusbar_model:
-			// the model picker (phase 3) hangs off this region.
+			open_models();  // click the model pill to pick one
 			return true;
 		default: return true;
 	}
