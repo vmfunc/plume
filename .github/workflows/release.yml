@@ -1,0 +1,30 @@
+name: release
+
+# cut a release from a version tag (`git tag v0.1.0 && git push --tags`) or by
+# hand from the actions tab. the linux binary is built with nix and attached.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v27
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+      - run: nix build .#plume --print-build-logs
+      - name: stage the binary
+        run: |
+          mkdir -p dist
+          cp -L result/bin/plume dist/plume-x86_64-linux
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
