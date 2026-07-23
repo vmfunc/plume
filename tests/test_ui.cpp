@@ -79,6 +79,36 @@ TEST_CASE("a plume widget directive renders as a rich element") {
 	CHECK(bad.find("widget") != std::string::npos);
 }
 
+TEST_CASE("custom widgets compose primitives into a tree") {
+	const theme th = rose_pine();
+	const std::string tree =
+	    R"({"type":"vbox","children":[{"type":"heading","text":"stats"},)"
+	    R"({"type":"bar","value":0.5,"color":"foam"},)"
+	    R"({"type":"sparkline","values":[1,3,2,5,4]},{"type":"kv","key":"cpu","value":"42%"}]})";
+	const std::string s = render(ui::render_widget(th, tree), 50, 8);
+	CHECK(s.find("stats") != std::string::npos);
+	CHECK(s.find("cpu") != std::string::npos);
+}
+
+TEST_CASE("a pathological widget tree is capped, not fatal") {
+	const theme th = rose_pine();
+	// a 5000-deep nest and a huge sibling array must render without crash or hang.
+	std::string deep = "{\"type\":\"vbox\",\"children\":[";
+	std::string tail;
+	for (int i = 0; i < 5000; ++i) {
+		deep += "{\"type\":\"vbox\",\"children\":[";
+		tail += "]}";
+	}
+	deep += "{\"type\":\"text\",\"text\":\"x\"}" + tail + "]}";
+	CHECK_NOTHROW(static_cast<void>(render(ui::render_widget(th, deep), 40, 8)));
+
+	std::string wide = "{\"type\":\"hbox\",\"children\":[";
+	for (int i = 0; i < 5000; ++i)
+		wide += (i ? "," : "") + std::string("{\"type\":\"text\",\"text\":\"a\"}");
+	wide += "]}";
+	CHECK_NOTHROW(static_cast<void>(render(ui::render_widget(th, wide), 40, 8)));
+}
+
 TEST_CASE("image half-block node renders cells for a decoded bitmap") {
 	img::bitmap bm;
 	bm.width = 8;

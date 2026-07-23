@@ -1,8 +1,13 @@
-// generative terminal widgets. the model can emit a ```plume fenced block of json
-// with a "type" field; plume renders it as a rich element instead of raw code.
-// this is what lets "what's the weather" come back as a card, not a paragraph.
+// generative terminal widgets. the model emits a ```plume fenced block of json;
+// plume renders it as a rich element. two ways to author one: a preset "type"
+// (weather, table, card, progress, chart, checklist) for the common shapes, or a
+// tree of layout primitives (vbox/hbox/text/bar/sparkline/box/...) for anything
+// custom. the tree is untrusted model output, so rendering is capped in depth and
+// node count and every field is optional — a malformed widget degrades, never
+// crashes or hangs.
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 #include <nlohmann/json.hpp>
 
@@ -14,6 +19,9 @@ using namespace ftxui;
 using json = nlohmann::json;
 
 namespace {
+
+constexpr int kMaxDepth = 14;     // deepest primitive nesting we will render
+constexpr int kNodeBudget = 600;  // hard cap on total nodes per widget
 
 std::string as_str(const json& v) {
 	if (v.is_string()) return v.get<std::string>();
@@ -35,9 +43,70 @@ std::string field(const json& j, const char* k) {
 	return j.contains(k) ? as_str(j[k]) : std::string{};
 }
 
-Element frame(Element body, rgb tint) {
-	return body | borderRounded | color(col(tint)) | size(WIDTH, LESS_THAN, 60);
+double num(const json& j, const char* k, double d) {
+	return j.contains(k) && j[k].is_number() ? j[k].get<double>() : d;
 }
+
+rgb color_by_name(const theme& th, const std::string& n) {
+	if (n == "iris") return th.p.iris;
+	if (n == "foam") return th.p.foam;
+	if (n == "gold") return th.p.gold;
+	if (n == "love") return th.p.love;
+	if (n == "rose") return th.p.rose;
+	if (n == "pine") return th.p.pine;
+	if (n == "subtle") return th.p.subtle;
+	if (n == "muted") return th.p.muted;
+	if (n == "base") return th.p.base;
+	if (n == "surface") return th.p.surface;
+	if (n == "hl") return th.p.hl_med;
+	return th.p.text;
+}
+
+Element frame(Element body, rgb tint) {
+	return body | borderRounded | color(col(tint)) | size(WIDTH, LESS_THAN, 64);
+}
+
+Element bar_of(const theme& th, double v, rgb tint, int width) {
+	width = std::clamp(width, 1, 60);
+	const int w = static_cast<int>(std::lround(std::clamp(v, 0.0, 1.0) * width));
+	Elements cells;
+	for (int i = 0; i < width; ++i)
+		cells.push_back(text(" ") | bgcolor(col(i < w ? tint : th.p.hl_low)));
+	return hbox(std::move(cells));
+}
+
+Element sparkline(const theme& th, const json& j) {
+	static const char* blocks[8] = {"▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"};
+	std::vector<double> vs;
+	double mn = 1e30, mx = -1e30;
+	if (j.contains("values") && j["values"].is_array())
+		for (const auto& v : j["values"])
+			if (v.is_number()) {
+				vs.push_back(v.get<double>());
+				mn = std::min(mn, vs.back());
+				mx = std::max(mx, vs.back());
+			}
+	if (vs.empty()) return text("");
+	const double range = mx > mn ? mx - mn : 1.0;
+	std::string s;
+	for (const double d : vs) {
+		int lvl = static_cast<int>(std::lround((d - mn) / range * 7));
+		s += blocks[std::clamp(lvl, 0, 7)];
+	}
+	return text(s) | color(col(color_by_name(th, j.value("color", "iris"))));
+}
+
+Element styled_text(const theme& th, const json& j) {
+	Element e = text(field(j, "text")) | color(col(color_by_name(th, j.value("color", "text"))));
+	const std::string st = j.value("style", "");
+	if (st.find("bold") != std::string::npos) e = e | bold;
+	if (st.find("dim") != std::string::npos) e = e | dim;
+	if (st.find("italic") != std::string::npos) e = e | italic;
+	if (j.contains("bg") && j["bg"].is_string()) e = e | bgcolor(col(color_by_name(th, j["bg"])));
+	return e;
+}
+
+// -- preset composites --------------------------------------------------------
 
 Element weather_widget(const theme& th, const json& j) {
 	std::string temp = j.contains("temp_c")   ? as_str(j["temp_c"]) + "°C"
@@ -94,9 +163,7 @@ Element card_widget(const theme& th, const json& j) {
 }
 
 Element progress_widget(const theme& th, const json& j) {
-	const float v = j.contains("value") && j["value"].is_number()
-	                    ? static_cast<float>(j["value"].get<double>())
-	                    : 0.0f;
+	const float v = static_cast<float>(num(j, "value", 0));
 	return frame(
 	    vbox({hbox({text(field(j, "label")) | color(col(th.p.text)), filler(),
 	                text(std::to_string(static_cast<int>(v * 100)) + "%") | color(col(th.p.gold))}),
@@ -107,26 +174,17 @@ Element progress_widget(const theme& th, const json& j) {
 Element chart_widget(const theme& th, const json& j) {
 	double maxv = 0;
 	if (j.contains("bars"))
-		for (const auto& b : j["bars"])
-			if (b.contains("value") && b["value"].is_number())
-				maxv = std::max(maxv, b["value"].get<double>());
+		for (const auto& b : j["bars"]) maxv = std::max(maxv, num(b, "value", 0));
 	if (maxv <= 0) maxv = 1;
 	Elements rows;
 	if (const std::string l = field(j, "label"); !l.empty())
 		rows.push_back(text(l) | bold | color(col(th.p.text)));
 	if (j.contains("bars"))
-		for (const auto& b : j["bars"]) {
-			const double val =
-			    b.contains("value") && b["value"].is_number() ? b["value"].get<double>() : 0.0;
-			const int w = static_cast<int>(std::lround(val / maxv * 24));
-			Elements bar;
-			for (int i = 0; i < 24; ++i)
-				bar.push_back(text(" ") | bgcolor(col(i < w ? th.p.iris : th.p.hl_low)));
+		for (const auto& b : j["bars"])
 			rows.push_back(
 			    hbox({text(field(b, "label")) | color(col(th.p.subtle)) | size(WIDTH, EQUAL, 12),
-			          hbox(std::move(bar)),
+			          bar_of(th, num(b, "value", 0) / maxv, th.p.iris, 24),
 			          text(" " + as_str(b.value("value", json(0)))) | color(col(th.p.foam))}));
-		}
 	return frame(vbox(std::move(rows)), th.p.hl_med);
 }
 
@@ -144,21 +202,105 @@ Element checklist_widget(const theme& th, const json& j) {
 	return frame(vbox(std::move(rows)), th.p.hl_med);
 }
 
+bool is_preset(const std::string& t) {
+	return t == "weather" || t == "table" || t == "card" || t == "progress" || t == "chart" ||
+	       t == "checklist" || t == "todo" || t == "box" || t == "panel";
+}
+
+// the recursive primitive renderer. depth and *budget guard against pathological
+// (deeply nested / enormous) model output; both degrade to an ellipsis, no crash.
+Element render_node(const theme& th, const json& j, int depth, int& budget) {
+	if (--budget < 0 || depth > kMaxDepth) return text(" … ") | color(col(th.p.muted)) | dim;
+	if (j.is_string()) return text(j.get<std::string>()) | color(col(th.p.text));
+	if (j.is_number() || j.is_boolean()) return text(as_str(j)) | color(col(th.p.foam));
+	if (j.is_array()) {
+		Elements kids;
+		for (const auto& c : j) kids.push_back(render_node(th, c, depth + 1, budget));
+		return kids.empty() ? text("") : vbox(std::move(kids));
+	}
+	if (!j.is_object()) return text("");
+
+	std::string type = j.value("type", "");
+	if (type.empty())  // infer a sensible default from the shape
+		type = j.contains("children")                          ? "vbox"
+		       : (j.contains("fields") || j.contains("title")) ? "card"
+		                                                       : "text";
+
+	if (type == "weather") return weather_widget(th, j);
+	if (type == "table") return table_widget(th, j);
+	if (type == "card") return card_widget(th, j);
+	if (type == "progress") return progress_widget(th, j);
+	if (type == "chart" || type == "bars") return chart_widget(th, j);
+	if (type == "checklist" || type == "todo") return checklist_widget(th, j);
+
+	auto children = [&] {
+		Elements e;
+		if (j.contains("children") && j["children"].is_array())
+			for (const auto& c : j["children"]) e.push_back(render_node(th, c, depth + 1, budget));
+		return e;
+	};
+	if (type == "vbox" || type == "col" || type == "column") {
+		auto e = children();
+		return e.empty() ? text("") : vbox(std::move(e));
+	}
+	if (type == "hbox" || type == "row") {
+		auto e = children();
+		return e.empty() ? text("") : hbox(std::move(e));
+	}
+	if (type == "box" || type == "panel") {
+		Element child =
+		    j.contains("child") ? render_node(th, j["child"], depth + 1, budget) : vbox(children());
+		Elements inner;
+		if (const std::string t = field(j, "title"); !t.empty()) {
+			inner.push_back(text(t) | bold | color(col(th.p.text)));
+			inner.push_back(separator() | color(col(th.p.hl_low)));
+		}
+		inner.push_back(std::move(child));
+		return frame(vbox(std::move(inner)), color_by_name(th, j.value("color", "hl")));
+	}
+	if (type == "text" || type == "label") return styled_text(th, j);
+	if (type == "heading" || type == "title")
+		return text(field(j, "text")) | bold |
+		       color(col(color_by_name(th, j.value("color", "text"))));
+	if (type == "bar" || type == "gauge" || type == "meter")
+		return bar_of(th, num(j, "value", 0), color_by_name(th, j.value("color", "iris")),
+		              static_cast<int>(num(j, "width", 24)));
+	if (type == "sparkline") return sparkline(th, j);
+	if (type == "separator" || type == "hr") return separator() | color(col(th.p.hl_low));
+	if (type == "spacer" || type == "filler") return filler();
+	if (type == "kv" || type == "field")
+		return hbox({text(field(j, "key") + "  ") | color(col(th.p.muted)) | size(WIDTH, EQUAL, 16),
+		             text(field(j, "value")) | color(col(th.p.foam))});
+	if (type == "badge" || type == "pill")
+		return pill(th, field(j, "text"), color_by_name(th, j.value("color", "iris")));
+
+	if (j.contains("children")) return vbox(children());  // lenient: unknown container
+	return text(as_str(j)) | color(col(th.p.subtle));
+}
+
 }  // namespace
 
 Element render_widget(const theme& th, const std::string& src) {
-	const auto j = json::parse(src, nullptr, false);
-	if (j.is_discarded() || !j.is_object())
+	// nlohmann's DOM parser recurses per nesting level, so guard the parser itself
+	// against absurdly deep untrusted input before handing it the string.
+	int depth = 0, worst = 0;
+	for (const char c : src) {
+		if (c == '{' || c == '[')
+			worst = std::max(worst, ++depth);
+		else if (c == '}' || c == ']')
+			--depth;
+	}
+	const auto j = worst > 200 ? json(json::value_t::discarded) : json::parse(src, nullptr, false);
+	if (j.is_discarded())
 		return frame(vbox({text(" widget ") | color(col(th.p.muted)) | dim,
 		                   paragraph(src) | color(col(th.p.subtle))}),
 		             th.p.hl_low);
-	const std::string type = j.value("type", "");
-	if (type == "weather") return weather_widget(th, j);
-	if (type == "table") return table_widget(th, j);
-	if (type == "progress") return progress_widget(th, j);
-	if (type == "chart" || type == "bar") return chart_widget(th, j);
-	if (type == "checklist" || type == "todo") return checklist_widget(th, j);
-	return card_widget(th, j);  // "card" and anything unknown
+	int budget = kNodeBudget;
+	Element e = render_node(th, j, 0, budget);
+	// presets frame themselves; a bare primitive tree gets a light frame.
+	const std::string type = j.is_object() ? j.value("type", "") : "";
+	if (j.is_object() && is_preset(type)) return e;
+	return frame(std::move(e), th.p.hl_med);
 }
 
 }  // namespace plume::ui

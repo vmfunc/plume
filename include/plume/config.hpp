@@ -71,6 +71,7 @@ struct config {
 	std::vector<std::string> plugins;     // plugin dir names under plugins/
 	std::vector<mcp_server_config> mcp;
 	std::string notify = "bell";  // bell | osc9 | off
+	bool web_search = false;      // start with the web search tool enabled
 
 	// resolved xdg locations, filled by the loader.
 	std::string config_dir;

@@ -117,6 +117,7 @@ result<config> load_config(const std::string& path) {
 
 	c.default_provider = tbl["default_provider"].value_or(std::string{});
 	c.notify = tbl["notify"].value_or(c.notify);
+	c.web_search = tbl["web_search"].value_or(c.web_search);
 
 	if (auto provs = tbl["providers"].as_table()) {
 		for (auto&& [name, node] : *provs) {
@@ -214,7 +215,8 @@ result<void> save_config(const config& c, const std::string& path) {
 
 	if (!c.default_provider.empty())
 		o << "default_provider = " << quote(c.default_provider) << "\n";
-	o << "notify = " << quote(c.notify) << "\n\n";
+	o << "notify = " << quote(c.notify) << "\n";
+	o << "web_search = " << (c.web_search ? "true" : "false") << "\n\n";
 
 	for (const auto& [name, p] : c.providers) {
 		o << "[providers." << name << "]\n";

@@ -216,7 +216,8 @@ class anthropic_provider final : public provider {
 		}
 		// the cache breakpoint sits on the last custom tool; the server-side web
 		// search tool is appended after it, uncached, so claude runs the search.
-		if (req.cache_prefix && !tools.empty()) tools.back()["cache_control"] = {{"type", "ephemeral"}};
+		if (req.cache_prefix && !tools.empty())
+			tools.back()["cache_control"] = {{"type", "ephemeral"}};
 		if (req.web_search)
 			tools.push_back({{"type", "web_search_20260209"}, {"name", "web_search"}});
 		if (!tools.empty()) body["tools"] = std::move(tools);

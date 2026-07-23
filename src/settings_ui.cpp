@@ -9,9 +9,10 @@ using namespace ftxui;
 namespace {
 
 // the editable fields, in display order. keep in sync with the switch below.
-constexpr int kFieldCount = 8;
+constexpr int kFieldCount = 10;
 constexpr const char* kLabels[kFieldCount] = {
-    "theme", "density", "animations", "notify", "thinking", "sidebar", "show thinking", "zen",
+    "theme",   "density",       "animations", "notify",  "thinking",
+    "sidebar", "show thinking", "zen",        "widgets", "web search",
 };
 
 }  // namespace
@@ -41,6 +42,8 @@ Element app::impl::settings_view() {
 			case 5: return cfg.ui.sidebar ? "on start" : "on demand";
 			case 6: return show_think ? "shown" : "hidden";
 			case 7: return cfg.ui.zen ? "on" : "off";
+			case 8: return cfg.ui.widgets ? "on" : "off";
+			case 9: return web_on ? "on" : "off";
 			default: return "";
 		}
 	};
@@ -93,6 +96,11 @@ bool app::impl::handle_settings(const Event& e) {
 			break;
 		case 6: show_think = !show_think; break;
 		case 7: cfg.ui.zen = !cfg.ui.zen; break;
+		case 8: cfg.ui.widgets = !cfg.ui.widgets; break;
+		case 9:
+			web_on = !web_on;
+			cfg.web_search = web_on;
+			break;
 		default: break;
 	}
 	persist_config();

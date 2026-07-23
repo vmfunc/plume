@@ -568,13 +568,21 @@ struct app::impl {
 			add("Before doing the work, lay out a short numbered plan of your approach and stop "
 			    "for confirmation. Only proceed once the user approves.");
 		if (cfg.ui.widgets)
-			add("You can render rich terminal widgets when a structured visual is clearer than "
-			    "prose. Emit a fenced block tagged `plume` holding a JSON object with a \"type\": "
-			    "weather {location, temp_c|temp_f, condition, forecast:[{day,hi,lo}]}; table "
-			    "{columns:[...], rows:[[...]]}; card {title, fields:{k:v}}; progress {label, "
-			    "value:0..1}; chart {label, bars:[{label,value}]}; checklist "
-			    "{items:[{text,done}]}. "
-			    "Use them only when they genuinely help; keep prose outside the block.");
+			add("You can render rich terminal UI when a visual beats prose. Emit a fenced block "
+			    "tagged `plume` holding one JSON object. For common shapes use a preset \"type\": "
+			    "weather {location, temp_c, condition, forecast:[{day,hi,lo}]}; table {columns, "
+			    "rows:[[...]]}; card {title, fields:{k:v}}; progress {label, value:0..1}; chart "
+			    "{label, bars:[{label,value}]}; checklist {items:[{text,done}]}. For ANYTHING "
+			    "else, "
+			    "compose primitives into a tree: {type:vbox|hbox, children:[...]}, {type:text, "
+			    "text, "
+			    "style:'bold'|'dim'|'italic', color:'iris'|'foam'|'gold'|'love'|'rose'|'pine'|"
+			    "'subtle'}, {type:heading, text}, {type:bar, value:0..1, color}, {type:sparkline, "
+			    "values:[...]}, {type:kv, key, value}, {type:badge, text, color}, {type:box, "
+			    "title, "
+			    "child}, {type:separator}. Nest freely (keep it under ~12 deep). Use widgets only "
+			    "when they help, prose stays outside the block, and never invent facts to fill a "
+			    "widget when you lack the data.");
 		if (!compaction_summary.empty()) add("summary of earlier turns: " + compaction_summary);
 		return sys;
 	}

@@ -43,7 +43,8 @@ result<app> app::create(config cfg) {
 	s.reload_transcript();
 	s.recover_convo_model();  // reflect the thread's last model in the pill
 	s.touch_tab(s.convo);
-	if (s.cfg.ui.sidebar) {  // open (visible, unfocused) so you can still type
+	s.web_on = s.cfg.web_search;  // persistable default for the web search tool
+	if (s.cfg.ui.sidebar) {       // open (visible, unfocused) so you can still type
 		s.sb = impl::sidebar_mode::open;
 		s.refresh_sidebar();
 	}
