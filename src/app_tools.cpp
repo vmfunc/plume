@@ -213,6 +213,7 @@ void app::impl::stream_reply(const node_id& parent) {
 	if (std::string sys = effective_system(); !sys.empty()) req.system = sys;
 	req.messages = context_upto(parent);
 	req.tools = tool_defs();
+	req.web_search = web_on;
 	req.cache_prefix = true;
 
 	live_text.clear();

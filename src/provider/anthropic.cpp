@@ -207,16 +207,18 @@ class anthropic_provider final : public provider {
 		}
 		body["messages"] = std::move(messages);
 
-		if (!req.tools.empty()) {
-			json tools = json::array();
-			for (const auto& t : req.tools) {
-				json schema = json::parse(t.input_schema_json, nullptr, false);
-				if (schema.is_discarded()) schema = {{"type", "object"}};
-				tools.push_back(
-				    {{"name", t.name}, {"description", t.description}, {"input_schema", schema}});
-			}
-			if (req.cache_prefix && !tools.empty())
-				tools.back()["cache_control"] = {{"type", "ephemeral"}};
+		json tools = json::array();
+		for (const auto& t : req.tools) {
+			json schema = json::parse(t.input_schema_json, nullptr, false);
+			if (schema.is_discarded()) schema = {{"type", "object"}};
+			tools.push_back(
+			    {{"name", t.name}, {"description", t.description}, {"input_schema", schema}});
+		}
+		// the server-side web search tool: claude runs the search and cites sources.
+		if (req.web_search)
+			tools.push_back({{"type", "web_search_20260209"}, {"name", "web_search"}});
+		if (!tools.empty()) {
+			if (req.cache_prefix) tools.back()["cache_control"] = {{"type", "ephemeral"}};
 			body["tools"] = std::move(tools);
 		}
 

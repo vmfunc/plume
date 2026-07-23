@@ -88,7 +88,7 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 31> kActions = {{
+constexpr std::array<action, 32> kActions = {{
     {"weave", "open the loom", false},
     {"autoweave", "toggle auto-fan <k>", true},
     {"models", "pick a model (ctrl-l)", false},
@@ -115,6 +115,7 @@ constexpr std::array<action, 31> kActions = {{
     {"settings", "preferences (click statusbar)", false},
     {"sidebar", "toggle the sidebar", false},
     {"plan", "toggle plan-first mode", false},
+    {"websearch", "toggle web search (anthropic)", false},
     {"cost", "token + spend dashboard", false},
     {"inspect", "raw node + nerd stats", false},
     {"mouse", "toggle mouse capture", false},
@@ -536,6 +537,7 @@ struct app::impl {
 	}
 
 	bool plan_mode = false;  // ask the model to plan before it answers
+	bool web_on = false;     // enable the anthropic server-side web search tool
 
 	// the full system prompt for a request: the user's system prompt, the plan-
 	// mode directive, the widget protocol, and any compaction summary.

@@ -72,6 +72,9 @@ struct request {
 
 	// place a cache_control breakpoint after the system prompt / tool list.
 	bool cache_prefix = false;
+
+	// enable the anthropic server-side web search tool for this request.
+	bool web_search = false;
 };
 
 // one increment off the wire. the ui appends text/thinking as it arrives and

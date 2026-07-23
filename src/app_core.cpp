@@ -139,6 +139,9 @@ void app::impl::run_command(const std::string& name, const std::string& arg) {
 	} else if (name == "plan") {
 		plan_mode = !plan_mode;
 		toast = plan_mode ? "plan mode on" : "plan mode off";
+	} else if (name == "websearch" || name == "web") {
+		web_on = !web_on;
+		toast = web_on ? "web search on" : "web search off";
 	} else if (name == "inspect") {
 		open_inspect();
 	} else if (name == "mouse") {
@@ -316,6 +319,7 @@ void app::impl::send(const std::string& raw) {
 		if (blocks) req.messages.push_back(message{transcript[i].role, *blocks});
 	}
 	req.tools = tool_defs();
+	req.web_search = web_on;
 	req.cache_prefix = true;
 
 	live_text.clear();
