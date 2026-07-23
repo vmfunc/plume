@@ -25,6 +25,11 @@ rgb lerp(const std::vector<rgb>& stops, float t);  // multi-stop
 // each glyph tinted along a gradient of stops. ascii only.
 ftxui::Element gradient_text(std::string_view, std::vector<rgb> stops);
 
+// the same, but with a 0..1 phase that shifts the gradient along the text, so
+// advancing it each frame makes the colour flow. used for the wordmark while a
+// reply streams; pass a static phase (0) when nothing is moving.
+ftxui::Element gradient_flow(std::string_view, std::vector<rgb> stops, float phase);
+
 // a themed decorative bitmap for the wizard splash (a soft 4-corner wash).
 img::bitmap splash_bitmap(int w, int h, const theme&);
 

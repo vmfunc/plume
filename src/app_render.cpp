@@ -18,8 +18,13 @@ Element app::impl::header() {
 	std::string role;  // name the active persona if the system prompt matches one
 	for (const auto& [name, prompt] : cfg.roles)
 		if (!system_prompt.empty() && prompt == system_prompt) role = name;
-	Elements bar = {text(" "), ui::gradient_text("plume", {th.p.love, th.p.iris, th.p.foam}) | bold,
-	                text("  " + convo_title) | color(col(th.p.subtle))};
+	// the wordmark's gradient flows while a reply streams (and animations are on).
+	const std::vector<rgb> grad = {th.p.love, th.p.iris, th.p.foam};
+	Element word =
+	    (streaming.load() && !reduce_motion())
+	        ? ui::gradient_flow("plume", grad, static_cast<float>(now_ms() % 1600) / 1600.0f)
+	        : ui::gradient_text("plume", grad);
+	Elements bar = {text(" "), word | bold, text("  " + convo_title) | color(col(th.p.subtle))};
 	if (!role.empty()) {
 		bar.push_back(text("  "));
 		bar.push_back(ui::pill(th, role, th.p.iris));

@@ -42,6 +42,16 @@ Element gradient_text(std::string_view s, std::vector<rgb> stops) {
 	return hbox(std::move(cells));
 }
 
+Element gradient_flow(std::string_view s, std::vector<rgb> stops, float phase) {
+	Elements cells;
+	for (std::size_t i = 0; i < s.size(); ++i) {
+		float t = (s.size() > 1 ? static_cast<float>(i) / (s.size() - 1) : 0.0f) + phase;
+		t -= std::floor(t);  // wrap into 0..1 so the ramp flows and loops
+		cells.push_back(text(std::string(1, s[i])) | color(col(lerp(stops, t))));
+	}
+	return hbox(std::move(cells));
+}
+
 img::bitmap splash_bitmap(int w, int h, const theme& th) {
 	img::bitmap bm;
 	bm.width = w;
@@ -334,7 +344,15 @@ Element streaming_card(const theme& th, const std::string& text_in, const std::s
 	if (show_think && !thinking.empty())
 		stack.push_back(hbox({text("  thinking ") | color(col(th.p.muted)) | dim | italic,
 		                      paragraph(thinking) | color(col(th.p.muted)) | dim}));
-	stack.push_back(hbox({body_block(th, text_in) | flex, caret(th, ms, reduce_motion)}));
+	if (text_in.empty() && thinking.empty()) {
+		// waiting for the first token: three dots that fill in turn.
+		const int n = reduce_motion ? 3 : static_cast<int>((ms / 300) % 4);
+		std::string dots(static_cast<std::size_t>(n), '.');
+		dots.resize(3, ' ');
+		stack.push_back(hbox({text("  " + dots) | color(col(th.p.muted))}));
+	} else {
+		stack.push_back(hbox({body_block(th, text_in) | flex, caret(th, ms, reduce_motion)}));
+	}
 	return rule_card(th, plume::role::assistant, header, vbox(std::move(stack)), compact);
 }
 
