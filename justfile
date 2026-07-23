@@ -31,9 +31,13 @@ test:
 test-san:
     {{_dev}}bash -c 'cmake -S . -B build-san -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer" && cmake --build build-san --target plume_tests && ./build-san/plume_tests'
 
-# static analysis
+# static analysis. the nix clang wrapper injects the libstdc++ search path via
+# env, which raw clang-tidy never sees, so we replay it through CPLUS_INCLUDE_PATH.
 lint:
-    {{_dev}}bash -c 'cmake --build build >/dev/null && run-clang-tidy -p build src'
+    {{_dev}}bash -c 'cmake --build build >/dev/null && \
+      export CPLUS_INCLUDE_PATH=$(clang++ -xc++ -E -v /dev/null 2>&1 | \
+        sed -n "s|^ \(/nix/store.*\)|\1|p" | paste -sd:) && \
+      run-clang-tidy -p build -quiet src'
 
 # format the tree
 fmt:

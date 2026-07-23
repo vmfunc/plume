@@ -81,6 +81,38 @@
               pname = "plume-tests";
               doCheck = true;
             });
+
+            # every tracked source is clang-format clean.
+            format = pkgs.runCommand "plume-format"
+              { nativeBuildInputs = [ pkgs.llvmPackages_19.clang-tools ]; } ''
+              cd ${self}
+              files=$(find src include tests -type f \( -name '*.cpp' -o -name '*.hpp' \))
+              clang-format --dry-run --Werror $files
+              touch $out
+            '';
+
+            # clang-tidy over the tree. reuse the package's own configure so the
+            # pkg-config closure (chafa -> glib) is intact, then run clang-tidy
+            # directly: the python run-clang-tidy wrapper needs /usr/bin/env, which
+            # the sandbox lacks, and the clang wrapper hides the libstdc++ include
+            # path from raw clang-tidy, so we replay it through CPLUS_INCLUDE_PATH.
+            lint = pkgs.plume.overrideAttrs (old: {
+              pname = "plume-lint";
+              nativeBuildInputs = old.nativeBuildInputs ++ [ pkgs.llvmPackages_19.clang-tools ];
+              buildPhase = ''
+                runHook preBuild
+                ccdir=$(dirname $(find "$NIX_BUILD_TOP" -name compile_commands.json | head -1))
+                export CPLUS_INCLUDE_PATH=$(clang++ -xc++ -E -v /dev/null 2>&1 \
+                  | sed -n 's|^ \(/nix/store.*\)|\1|p' | paste -sd:)
+                for f in $(find "$NIX_BUILD_TOP" -path '*/src/*.cpp'); do
+                  clang-tidy -p "$ccdir" -quiet "$f"
+                done
+                runHook postBuild
+              '';
+              installPhase = "touch $out";
+              doCheck = false;
+              dontFixup = true;
+            });
           };
         })
     // {
