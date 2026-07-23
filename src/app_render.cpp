@@ -229,6 +229,7 @@ Element app::impl::spawn_view() {
 Element app::impl::overlay_view() {
 	if (ov == overlay::models) return models_view();
 	if (ov == overlay::settings) return settings_view();
+	if (ov == overlay::cost) return cost_view();
 	if (ov == overlay::tool_approve && !tool_queue.empty()) {
 		const auto& pt = tool_queue.front();
 		const std::string extra =

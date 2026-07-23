@@ -88,7 +88,7 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 24> kActions = {{
+constexpr std::array<action, 25> kActions = {{
     {"weave", "open the loom", false},
     {"autoweave", "toggle auto-fan <k>", true},
     {"models", "pick a model (ctrl-l)", false},
@@ -111,6 +111,7 @@ constexpr std::array<action, 24> kActions = {{
     {"motion", "toggle animations", false},
     {"settings", "preferences (click statusbar)", false},
     {"sidebar", "toggle the sidebar", false},
+    {"cost", "token + spend dashboard", false},
     {"help", "keybinding cheatsheet (f1)", false},
     {"quit", "leave plume", false},
 }};
@@ -326,6 +327,7 @@ struct app::impl {
 		search,
 		models,
 		settings,
+		cost,
 		tool_approve,
 	};
 	overlay ov = overlay::none;
@@ -410,6 +412,17 @@ struct app::impl {
 	Element settings_view();
 	bool handle_settings(const Event& e);
 	void cycle_theme(int dir);
+
+	// the cost dashboard (defined in cost_ui.cpp). cost is never stored, so it is
+	// summed from token totals priced by cfg.prices when the overlay opens.
+	struct cost_stats {
+		std::int64_t in = 0, out = 0;
+		double usd = 0;
+	};
+	std::map<std::string, cost_stats> cost_by_model;
+	cost_stats cost_convo, cost_all;
+	void open_cost();
+	Element cost_view();
 	void recover_convo_model() {
 		convo_model.clear();
 		for (auto it = transcript.rbegin(); it != transcript.rend(); ++it)

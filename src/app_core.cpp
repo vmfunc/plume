@@ -125,6 +125,8 @@ void app::impl::run_command(const std::string& name, const std::string& arg) {
 		open_settings();
 	} else if (name == "sidebar") {
 		toggle_sidebar();
+	} else if (name == "cost") {
+		open_cost();
 	} else if (name == "continue") {
 		continue_turn();
 	} else if (name == "attach") {
@@ -178,8 +180,8 @@ bool app::impl::handle_overlay(const Event& e) {
 		ov = overlay::none;
 		return true;
 	}
-	if (ov == overlay::cheatsheet) {
-		ov = overlay::none;
+	if (ov == overlay::cheatsheet || ov == overlay::cost) {
+		ov = overlay::none;  // read-only overlays close on any key
 		return true;
 	}
 	const auto items = overlay_items();
