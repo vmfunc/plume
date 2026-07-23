@@ -177,6 +177,28 @@ struct app::impl {
 	bool follow_tail = true;
 	bool pending_g = false;  // first 'g' of a gg (jump to top)
 
+	// composer input history (recalled with the arrows on an empty line).
+	std::vector<std::string> input_history;
+	int history_pos = -1;
+	void recall_history(int dir) {
+		if (input_history.empty()) return;
+		if (history_pos < 0) history_pos = static_cast<int>(input_history.size());
+		history_pos = std::clamp(history_pos + dir, 0, static_cast<int>(input_history.size()));
+		comp.set_text(history_pos < static_cast<int>(input_history.size())
+		                  ? input_history[static_cast<std::size_t>(history_pos)]
+		                  : "");
+	}
+
+	// re-run a turn that came back as an error, from its user parent.
+	void retry_last() {
+		if (transcript.empty() || !db) return;
+		const node last = transcript.back();
+		if (last.state != node_state::error || !last.parent) return;
+		weave w(*db);
+		static_cast<void>(w.prune(last.id));  // drop the error leaf
+		stream_reply(*last.parent);
+	}
+
 	// mouse hit-test registry, rebuilt every frame. a deque (never a vector): hot()
 	// hands reflect() a Box& into the element tree, so a reallocation would dangle
 	// every earlier reflect. cleared at the top of each render pass.
@@ -208,6 +230,35 @@ struct app::impl {
 	void scroll_tail() {
 		transcript_sel = -1;
 		follow_tail = true;
+	}
+
+	// act on the selected transcript turn (the message action bar / its keys).
+	void message_action(char a) {
+		if (transcript_sel < 0 || transcript_sel >= static_cast<int>(transcript.size())) return;
+		const node n = transcript[static_cast<std::size_t>(transcript_sel)];
+		switch (a) {
+			case 'y': osc52_copy(node_text(n)), toast = "copied message"; break;
+			case 'c': osc52_copy(last_code_block(node_text(n))), toast = "copied code"; break;
+			case 'e':  // edit as a new branch from this turn's parent
+				comp.set_text(node_text(n));
+				refork_parent = n.parent;
+				scroll_tail();
+				break;
+			case 'q':  // quote into the composer
+				comp.set_text("> " + node_text(n) + "\n\n");
+				break;
+			case 'r': spawn_siblings(n.id, 1); break;  // regenerate
+			case 'b': spawn_siblings(n.id, 3); break;  // branch three ways
+			case 'x':                                  // prune to the graveyard
+				if (db) {
+					weave w(*db);
+					static_cast<void>(w.prune(n.id));
+					reload_transcript();
+					scroll_tail();
+				}
+				break;
+			default: break;
+		}
 	}
 
 	// streaming state, touched from the ui thread only (workers marshal via Post).

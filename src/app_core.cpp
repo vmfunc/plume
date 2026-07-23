@@ -245,6 +245,8 @@ bool app::impl::handle_overlay(const Event& e) {
 void app::impl::send(const std::string& raw) {
 	if (streaming || !db || !prov || raw.empty()) return;
 	if (worker.joinable()) worker.join();
+	if (input_history.empty() || input_history.back() != raw) input_history.push_back(raw);
+	history_pos = -1;
 
 	// plugins may rewrite the outgoing message (pre_send). cheap text hooks
 	// run inline; a hook that reaches for a model only does so when the user

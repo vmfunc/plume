@@ -47,6 +47,9 @@ Element app::impl::statusbar() {
 			line.push_back(text(s.text) | color(col(th.p.rose)));
 		}
 	line.push_back(filler());
+	if (!transcript.empty() && transcript.back().state == node_state::error && !streaming)
+		line.push_back(hot(text(" ↻ retry ") | color(col(th.p.base)) | bgcolor(col(th.p.love)),
+		                   hit_kind::retry));
 	if (autoweave) line.push_back(ui::pill(th, "autoweave", th.p.pine));
 	if (!pending_attach.empty())
 		line.push_back(
@@ -92,7 +95,18 @@ Element app::impl::transcript_view() {
 			focus_at = static_cast<int>(out.size());
 		}
 		out.push_back(hot(std::move(card), hit_kind::message, idx));  // click selects
-
+		if (cursor_on && idx == transcript_sel) {                     // the action bar
+			auto tok = [&](char a, const char* label) {
+				return hot(text(std::string(" ") + label + " ") | color(col(th.p.foam)),
+				           hit_kind::msg_action, static_cast<int>(a));
+			};
+			auto dot = [&] { return text("·") | color(col(th.p.muted)); };
+			out.push_back(
+			    hbox({text("   "), tok('y', "copy"), dot(), tok('c', "code"), dot(),
+			          tok('e', "edit"), dot(), tok('r', "regen"), dot(), tok('b', "branch"), dot(),
+			          tok('q', "quote"), dot(), tok('x', "prune")}) |
+			    dim);
+		}
 		for (const auto& path : images)
 			if (const img::bitmap* bm = preview(path))
 				out.push_back(hbox({text("  "), ui::image_halfblock(*bm, 44, 14)}));
@@ -111,7 +125,13 @@ Element app::impl::transcript_view() {
 		out[static_cast<std::size_t>(focus_at)] = out[static_cast<std::size_t>(focus_at)] | focus;
 	else
 		out.back() = out.back() | focus;  // follow the tail
-	return vbox(std::move(out)) | yframe | vscroll_indicator | flex;
+	Element view = vbox(std::move(out)) | yframe | vscroll_indicator | flex;
+	if (!follow_tail && !transcript.empty()) {  // a chip back to the live tail
+		Element chip = hot(text(" ↓ latest ") | color(col(th.p.base)) | bgcolor(col(th.p.iris)),
+		                   hit_kind::jump_latest);
+		view = dbox({view, vbox({filler(), hbox({filler(), chip, text(" ")})})});
+	}
+	return view;
 }
 
 Element app::impl::weave_view() {

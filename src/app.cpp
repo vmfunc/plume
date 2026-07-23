@@ -286,6 +286,21 @@ int app::run() {
 			if (e == Event::Character("G") || e == Event::End) return s.scroll_tail(), true;
 			if (e == Event::Home) return s.scroll_top(), true;
 			if (e == Event::Escape && !s.follow_tail) return s.scroll_tail(), true;
+			// message actions on the selected turn.
+			if (!s.follow_tail && s.transcript_sel >= 0)
+				for (char a : {'y', 'c', 'e', 'r', 'b', 'q', 'x'})
+					if (e == Event::Character(std::string(1, a))) return s.message_action(a), true;
+		}
+		// recall previously sent lines with the arrows on an empty composer.
+		if (s.comp.insert_mode() && s.comp.value().empty()) {
+			if (e == Event::ArrowUp) return s.recall_history(-1), true;
+			if (e == Event::ArrowDown) return s.recall_history(1), true;
+		}
+		// retry the newest turn if it errored (R in normal mode, or the chip).
+		if (!s.comp.insert_mode() && e == Event::Character("R") && !s.transcript.empty() &&
+		    s.transcript.back().state == node_state::error) {
+			s.retry_last();
+			return true;
 		}
 		// chat: the modal composer handles every key.
 		switch (s.comp.handle(e)) {

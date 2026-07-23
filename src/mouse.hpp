@@ -21,6 +21,9 @@ enum class hit_kind : std::uint8_t {
 	sidebar_toggle,   // the collapse/expand handle
 	help,             // the "? keys" hint in the status bar
 	settings,         // the "settings" hint in the status bar
+	msg_action,       // a token in the selected message's action bar (index = char)
+	jump_latest,      // the "jump to latest" chip
+	retry,            // the "retry" chip after an error
 };
 
 struct hit_region {
