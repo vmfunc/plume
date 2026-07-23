@@ -40,8 +40,14 @@ const char* thinking_to(thinking_mode m) {
 std::string quote(std::string_view s) {
 	std::string out = "\"";
 	for (char c : s) {
-		if (c == '"' || c == '\\') out.push_back('\\');
-		out.push_back(c);
+		switch (c) {
+			case '"': out += "\\\""; break;
+			case '\\': out += "\\\\"; break;
+			case '\n': out += "\\n"; break;
+			case '\t': out += "\\t"; break;
+			case '\r': out += "\\r"; break;
+			default: out.push_back(c);
+		}
 	}
 	out.push_back('"');
 	return out;
@@ -150,6 +156,16 @@ result<config> load_config(const std::string& path) {
 		}
 	}
 
+	if (auto roles = tbl["roles"].as_table())
+		for (auto&& [name, node] : *roles)
+			if (auto s = node.value<std::string>()) c.roles[std::string(name.str())] = *s;
+
+	if (auto snips = tbl["snippets"].as_array())
+		for (auto&& node : *snips)
+			if (auto t = node.as_table())
+				c.snippets.push_back(
+				    {(*t)["name"].value_or(std::string{}), (*t)["body"].value_or(std::string{})});
+
 	if (auto plugins = tbl["plugins"].as_array()) {
 		c.plugins.clear();
 		for (auto&& v : *plugins)
@@ -233,6 +249,17 @@ result<void> save_config(const config& c, const std::string& path) {
 		for (std::size_t i = 0; i < c.plugins.size(); ++i)
 			o << (i ? ", " : "") << quote(c.plugins[i]);
 		o << "]\n";
+	}
+
+	if (!c.roles.empty()) {
+		o << "\n[roles]\n";
+		for (const auto& [name, prompt] : c.roles)
+			o << quote(name) << " = " << quote(prompt) << "\n";
+	}
+	for (const auto& s : c.snippets) {
+		o << "\n[[snippets]]\n";
+		o << "name = " << quote(s.name) << "\n";
+		o << "body = " << quote(s.body) << "\n";
 	}
 
 	const fs::path p(path);

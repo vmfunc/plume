@@ -15,12 +15,18 @@ double app::impl::cost_of(const usage& u) const {
 }
 
 Element app::impl::header() {
-	return vbox({
-	    hbox({text(" "), ui::gradient_text("plume", {th.p.love, th.p.iris, th.p.foam}) | bold,
-	          text("  " + convo_title) | color(col(th.p.subtle)), filler(),
-	          text(in_weave ? "weave " : "") | color(col(th.p.foam)) | dim}),
-	    separator() | color(col(th.p.hl_med)),
-	});
+	std::string role;  // name the active persona if the system prompt matches one
+	for (const auto& [name, prompt] : cfg.roles)
+		if (!system_prompt.empty() && prompt == system_prompt) role = name;
+	Elements bar = {text(" "), ui::gradient_text("plume", {th.p.love, th.p.iris, th.p.foam}) | bold,
+	                text("  " + convo_title) | color(col(th.p.subtle))};
+	if (!role.empty()) {
+		bar.push_back(text("  "));
+		bar.push_back(ui::pill(th, role, th.p.iris));
+	}
+	bar.push_back(filler());
+	bar.push_back(text(in_weave ? "weave " : "") | color(col(th.p.foam)) | dim);
+	return vbox({hbox(std::move(bar)), separator() | color(col(th.p.hl_med))});
 }
 
 Element app::impl::statusbar() {
@@ -104,20 +110,21 @@ Element app::impl::transcript_view() {
 			out.push_back(hot(std::move(card), hit_kind::message, idx));  // click selects
 		}
 		for (const auto* tu : tu_blocks)  // a tool call, with its arguments
-			out.push_back(vbox({hbox({text("  ▸ tool ") | color(col(th.p.iris)) | bold,
-			                          text(tu->name) | color(col(th.p.iris))}),
-			                    hbox({text("    "),
-			                          tool_args_table(tu->input_json.empty() ? "{}" : tu->input_json)})}) |
-			              borderRounded | color(col(th.p.hl_med)));
+			out.push_back(
+			    vbox({hbox({text("  ▸ tool ") | color(col(th.p.iris)) | bold,
+			                text(tu->name) | color(col(th.p.iris))}),
+			          hbox({text("    "),
+			                tool_args_table(tu->input_json.empty() ? "{}" : tu->input_json)})}) |
+			    borderRounded | color(col(th.p.hl_med)));
 		for (const auto* tr : tr_blocks) {  // its result, error-tinted
 			const rgb tint = tr->is_error ? th.p.love : th.p.foam;
 			std::string content = tr->content.substr(0, 500);
-			out.push_back(hbox({text("  ⟵ ") | color(col(tint)),
-			                    paragraph(content.empty() ? "(empty)" : content) |
-			                        color(col(th.p.subtle))}) |
-			              borderRounded | color(col(th.p.hl_low)));
+			out.push_back(
+			    hbox({text("  ⟵ ") | color(col(tint)),
+			          paragraph(content.empty() ? "(empty)" : content) | color(col(th.p.subtle))}) |
+			    borderRounded | color(col(th.p.hl_low)));
 		}
-		if (cursor_on && idx == transcript_sel) {                     // the action bar
+		if (cursor_on && idx == transcript_sel) {  // the action bar
 			auto tok = [&](char a, const char* label) {
 				return hot(text(std::string(" ") + label + " ") | color(col(th.p.foam)),
 				           hit_kind::msg_action, static_cast<int>(a));
@@ -252,6 +259,8 @@ Element app::impl::overlay_view() {
 	if (ov == overlay::models) return models_view();
 	if (ov == overlay::settings) return settings_view();
 	if (ov == overlay::cost) return cost_view();
+	if (ov == overlay::roles) return roles_view();
+	if (ov == overlay::snippets) return snips_view();
 	if (ov == overlay::tool_approve && !tool_queue.empty()) {
 		const auto& pt = tool_queue.front();
 		const std::string extra =

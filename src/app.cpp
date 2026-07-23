@@ -230,6 +230,10 @@ int app::run() {
 			s.ov = impl::overlay::cheatsheet;
 			return true;
 		}
+		if (e == Event::CtrlT) {  // snippet library
+			s.open_snips();
+			return true;
+		}
 		// a focused sidebar owns the keyboard (open-but-unfocused lets you type).
 		if (s.sb == impl::sidebar_mode::focused) return s.handle_sidebar(e);
 		// the loom owns the keyboard while branches stream.

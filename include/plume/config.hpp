@@ -52,9 +52,17 @@ struct mcp_server_config {
 	std::vector<std::string> allow;  // tool names for the allowlist
 };
 
+// a reusable prompt fragment; {{variables}} in the body are filled on insertion.
+struct snippet {
+	std::string name;
+	std::string body;
+};
+
 struct config {
 	ui_config ui;
 	keys_config keys;
+	std::map<std::string, std::string> roles;  // persona name -> system prompt
+	std::vector<snippet> snippets;             // prompt/snippet library
 	std::map<std::string, provider_entry> providers;
 	std::string default_provider;
 	sampling_params defaults;             // model, max_tokens, thinking, effort

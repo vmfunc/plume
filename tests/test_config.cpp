@@ -23,6 +23,8 @@ TEST_CASE("config written by the wizard round-trips through the loader") {
 	c.defaults.temperature = 0.7;
 	c.defaults.top_p = 0.95;
 	c.defaults.effort = "high";
+	c.roles["reviewer"] = "you are a terse code reviewer.\nflag only real bugs.";
+	c.snippets.push_back({"pr", "review {{file}} for {{concern}}"});
 	c.providers["anthropic"] = {"anthropic", "", "env", "ANTHROPIC_API_KEY", "claude-opus-4-8"};
 
 	const std::string path =
@@ -44,6 +46,11 @@ TEST_CASE("config written by the wizard round-trips through the loader") {
 	REQUIRE(back->defaults.top_p.has_value());
 	CHECK(*back->defaults.top_p == doctest::Approx(0.95));
 	CHECK(back->defaults.effort == "high");
+	REQUIRE(back->roles.contains("reviewer"));
+	CHECK(back->roles.at("reviewer") == "you are a terse code reviewer.\nflag only real bugs.");
+	REQUIRE(back->snippets.size() == 1);
+	CHECK(back->snippets.front().name == "pr");
+	CHECK(back->snippets.front().body == "review {{file}} for {{concern}}");
 
 	REQUIRE(back->providers.contains("anthropic"));
 	const auto& p = back->providers.at("anthropic");

@@ -102,6 +102,15 @@ void app::impl::run_command(const std::string& name, const std::string& arg) {
 	} else if (name == "system") {
 		system_prompt = arg;
 		toast = "system prompt set";
+	} else if (name == "roles") {
+		open_roles();
+	} else if (name == "role") {
+		if (arg.rfind("save ", 0) == 0)
+			save_role(arg.substr(5));
+		else
+			open_roles();
+	} else if (name == "snip" || name == "snippets") {
+		open_snips();
 	} else if (name == "search") {
 		run_search(arg, false);
 	} else if (name == "compact") {
@@ -176,6 +185,8 @@ bool app::impl::handle_overlay(const Event& e) {
 	}
 	if (ov == overlay::models) return handle_models(e);
 	if (ov == overlay::settings) return handle_settings(e);
+	if (ov == overlay::roles) return handle_roles(e);
+	if (ov == overlay::snippets) return handle_snips(e);
 	if (e == Event::Escape) {
 		ov = overlay::none;
 		return true;

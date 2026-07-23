@@ -88,7 +88,7 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 25> kActions = {{
+constexpr std::array<action, 28> kActions = {{
     {"weave", "open the loom", false},
     {"autoweave", "toggle auto-fan <k>", true},
     {"models", "pick a model (ctrl-l)", false},
@@ -101,6 +101,9 @@ constexpr std::array<action, 25> kActions = {{
     {"think", "thinking <off|adaptive|n>", true},
     {"theme", "switch theme <name>", true},
     {"system", "set a system prompt <text>", true},
+    {"roles", "apply a persona", false},
+    {"role", "save current as a role <name>", true},
+    {"snip", "insert a snippet (ctrl-t)", false},
     {"search", "search this conversation <q>", true},
     {"compact", "summarize older turns", false},
     {"continue", "resume a truncated turn", false},
@@ -328,6 +331,8 @@ struct app::impl {
 		models,
 		settings,
 		cost,
+		roles,
+		snippets,
 		tool_approve,
 	};
 	overlay ov = overlay::none;
@@ -423,6 +428,29 @@ struct app::impl {
 	cost_stats cost_convo, cost_all;
 	void open_cost();
 	Element cost_view();
+
+	// the roles + snippet library (defined in library_ui.cpp).
+	void open_roles() {
+		ov = overlay::roles;
+		ov_filter.clear();
+		ov_sel = 0;
+	}
+	Element roles_view();
+	bool handle_roles(const Event& e);
+	void save_role(const std::string& name);
+
+	bool snip_fill = false;  // filling {{variables}} of a chosen snippet
+	std::string snip_body;
+	std::vector<std::string> snip_vars, snip_vals;
+	int snip_idx = 0;
+	void open_snips() {
+		ov = overlay::snippets;
+		ov_filter.clear();
+		ov_sel = 0;
+		snip_fill = false;
+	}
+	Element snips_view();
+	bool handle_snips(const Event& e);
 	void recover_convo_model() {
 		convo_model.clear();
 		for (auto it = transcript.rbegin(); it != transcript.rend(); ++it)
