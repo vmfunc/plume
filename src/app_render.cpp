@@ -21,7 +21,7 @@ Element app::impl::header() {
 	// the wordmark's gradient flows while a reply streams (and animations are on).
 	const std::vector<rgb> grad = {th.p.love, th.p.iris, th.p.foam};
 	Element word =
-	    (streaming.load() && !reduce_motion())
+	    (streaming.load() && stream_convo == convo && !reduce_motion())
 	        ? ui::gradient_flow("plume", grad, static_cast<float>(now_ms() % 1600) / 1600.0f)
 	        : ui::gradient_text("plume", grad);
 	Elements bar = {text(" "), word | bold, text("  " + convo_title) | color(col(th.p.subtle))};
@@ -74,8 +74,10 @@ Element app::impl::statusbar() {
 		line.push_back(
 		    ui::pill(th, "⧉ " + std::to_string(pending_attach.size()) + " staged", th.p.gold));
 	if (!toast.empty()) line.push_back(text(toast + " ") | color(col(th.p.foam)));
-	if (streaming || compacting.load())
+	if ((streaming && stream_convo == convo) || compacting.load())
 		line.push_back(text(ui::spinner(now_ms()) + " streaming ") | color(col(th.p.rose)));
+	else if (streaming)  // a background conversation is still streaming
+		line.push_back(text(ui::spinner(now_ms()) + " bg ") | color(col(th.p.muted)));
 	line.push_back(hot(text(" ? keys ") | color(col(th.p.subtle)), hit_kind::help));
 	line.push_back(hot(text(" settings ") | color(col(th.p.subtle)), hit_kind::settings));
 	line.push_back(text(in_weave ? " weave " : " chat ") | color(col(th.p.subtle)) |
@@ -154,7 +156,7 @@ Element app::impl::transcript_view() {
 				out.push_back(hbox({text("  "), ui::image_halfblock(*bm, 44, 14)}));
 		++idx;
 	}
-	if (streaming || !live_text.empty() || !live_think.empty())
+	if (stream_convo == convo && (streaming || !live_text.empty() || !live_think.empty()))
 		out.push_back(ui::streaming_card(th, live_text, live_think, show_think, cmp, now_ms(),
 		                                 reduce_motion()));
 	if (out.empty())
@@ -186,7 +188,9 @@ Element app::impl::tabs_strip() {
 				title = c->title.empty() ? "(untitled)" : c->title;
 		if (title.size() > 16) title = title.substr(0, 15) + "…";
 		const bool active = id == convo;
-		Element tab = text(" " + title + " ") | color(col(active ? th.p.base : th.p.subtle)) |
+		const bool busy = streaming && id == stream_convo;  // a stream in this tab
+		Element tab = text((busy ? ui::spinner(now_ms()) + " " : " ") + title + " ") |
+		              color(col(active ? th.p.base : th.p.subtle)) |
 		              bgcolor(col(active ? th.p.iris : th.p.overlay));
 		cells.push_back(hot(std::move(tab), hit_kind::tab, i));
 		cells.push_back(text(" "));

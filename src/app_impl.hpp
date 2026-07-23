@@ -272,6 +272,7 @@ struct app::impl {
 
 	// streaming state, touched from the ui thread only (workers marshal via Post).
 	std::atomic<bool> streaming{false};
+	convo_id stream_convo;  // the conversation the live stream belongs to
 	std::atomic<bool> stop_flag{false};
 	std::string live_text;
 	std::string live_think;

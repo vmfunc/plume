@@ -219,6 +219,7 @@ void app::impl::stream_reply(const node_id& parent) {
 	live_text.clear();
 	live_think.clear();
 	status_error.clear();
+	stream_convo = convo;
 	streaming = true;
 	stop_flag = false;
 	ttft_ms = 0;

@@ -328,6 +328,7 @@ void app::impl::send(const std::string& raw) {
 	live_text.clear();
 	live_think.clear();
 	status_error.clear();
+	stream_convo = convo;
 	streaming = true;
 	stop_flag = false;
 	ttft_ms = 0;
@@ -360,9 +361,11 @@ void app::impl::send(const std::string& raw) {
 
 void app::impl::finish_stream(const result<completion>& out, const node_id& parent) {
 	streaming = false;
+	const convo_id sc = stream_convo;  // the stream may have outlived a convo switch
+	const bool active = sc == convo;   // is its conversation the one on screen?
 	node reply;
 	reply.id = node_id{new_id("node")};
-	reply.convo = convo;
+	reply.convo = sc;
 	reply.parent = parent;
 	reply.role = role::assistant;
 	reply.model = model_id();
@@ -374,19 +377,24 @@ void app::impl::finish_stream(const result<completion>& out, const node_id& pare
 		reply.state = node_state::complete;
 		last_usage = out->tokens;
 	} else {
-		status_error = out.error().detail;
+		if (active) status_error = out.error().detail;
 		reply.content_json =
 		    codec::encode_blocks({text_block{"[error: " + out.error().detail + "]"}});
 		reply.state = node_state::error;
 	}
 	if (db) {
 		static_cast<void>(db->put_node(reply));
-		static_cast<void>(db->set_active_leaf(convo, reply.id));
+		static_cast<void>(db->set_active_leaf(sc, reply.id));
 	}
 	if (plugins && out) plugins->run_post_receive(out->reply.plain_text());
 	live_text.clear();
 	live_think.clear();
-	reload_transcript();
+	if (active) reload_transcript();
+
+	if (!active) {  // a background conversation finished; just persist and nudge
+		notify_done();
+		return;
+	}
 
 	// a truncated turn can be resumed with /continue.
 	truncated = out && out->stop_reason == "max_tokens";
