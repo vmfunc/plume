@@ -14,35 +14,51 @@ from a checkout:
 
     nix profile install .
 
-as a flake input:
+as a flake input, then add the package to your profile or use the home-manager
+module below:
 
     inputs.plume.url = "github:vmfunc/plume";
 
-or via the home-manager module, which writes `config.toml` from typed options so a
-nix user never has to touch the wizard:
+## configure
+
+on nix, drive everything from the `programs.plume` home-manager module. it writes
+`config.toml` from typed options, so first run lands in a working chat instead of
+the wizard:
 
     programs.plume = {
       enable = true;
-      theme = "rose-pine-moon";
-      keybindings = "vim";
+      theme = "rose-pine-moon";     # rose-pine | rose-pine-moon | rose-pine-dawn | va11, or a themes.<name>
+      keybindings = "vim";          # vim | emacs
+      density = "cozy";             # cozy | compact
+      notify = "bell";              # bell | osc9 | off
       defaultProvider = "anthropic";
-      # the key never lands in the nix store: read it from a command or the keychain
       providers.anthropic = {
-        kind = "anthropic";
-        authSource = "key_cmd";
+        kind = "anthropic";         # anthropic | openai | openrouter | ollama | openai-compatible
+        authSource = "key_cmd";     # env | key_cmd | keychain | inline
         authValue = "pass show anthropic/api";
       };
-      defaults = { thinking = "adaptive"; effort = "high"; };
-      mcpServers.notes = {
+      defaults = {                  # per-conversation sampling, overridable at runtime
+        thinking = "adaptive";      # off | adaptive | budget
+        effort = "high";            # low | medium | high | xhigh | max
+        # model, maxTokens, temperature, topP, thinkingBudget also live here
+      };
+      mcpServers.notes = {          # tools offered to models that support tool use
         command = "mcp-server-filesystem";
         args = [ "/home/me/notes" ];
-        approval = "allowlist";
+        approval = "allowlist";     # ask | allowlist | yolo
         allow = [ "read_file" ];
       };
+      # prices, plugins, pluginDirs, binds and themes are options too; anything
+      # not surfaced goes in `settings`, merged on top using the raw toml schema.
     };
 
-every option is discoverable and typed; anything not covered goes in `settings`,
-which is merged on top using the raw toml schema.
+keep keys out of the nix store: `key_cmd` (or `env` / `keychain`) reads the key at
+runtime. an `inline` key is written into the world-readable store, and the module
+warns you when you set one.
+
+off nix, first run walks a wizard (provider, key, model, theme, keys), then writes
+`~/.config/plume/config.toml`, hot-reloaded on save. re-run it any time with `plume
+setup`; `plume doctor` checks config, storage, terminal and provider health.
 
 ## quickstart
 
