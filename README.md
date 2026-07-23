@@ -2,7 +2,7 @@
 
 plume — a quill for terminals. talk to models, weave the branches, keep your history in sqlite where it belongs. no electron, no telemetry, no cloud between you and the api.
 
-a c++ tui client for language models. every conversation is a tree, not a scroll: branch a reply, walk the siblings, graft a subtree where it fits better, prune what didn't work. images render inline for real (kitty graphics, sixel or chafa where they must). storage is one sqlite file you can back up, grep, or query. plugins are lua. it speaks to anthropic and anything openai-compatible, and it can import your claude.ai history so nothing gets left behind.
+a c++ tui client for language models. every conversation is a tree, not a scroll: branch a reply, walk the siblings, graft a subtree where it fits better, prune what didn't work. images render inline for real: kitty graphics where the terminal has them, a chafa half-block fallback everywhere else. storage is one sqlite file you can back up, grep, or query. plugins are lua. it speaks to anthropic and anything openai-compatible, and it can import your claude.ai history so nothing gets left behind.
 
 ![plume in a kitty terminal](./assets/screenshot.png)
 
@@ -28,15 +28,17 @@ or via the home-manager module:
 ## quickstart
 
     $ plume                 # first run drops into a wizard: provider, key, model
-    / how do i mmap a file  # press / to talk, replies stream in place
-    / draw me a diagram     # images from the model render inline
+    how do i mmap a file    # just type; enter sends, replies stream in place
+    /model                  # a leading slash runs a command (ctrl-k for the palette)
     ctrl-w                  # weave: the conversation as a tree
-      j/k h/l               #   parents, children, siblings
-      enter                 #   continue from any node
+      j/k                   #   walk parents, children, siblings
+      enter                 #   adopt: make this node the active path
+      s / r                 #   spawn 3 alternatives / regenerate one
+      c                     #   compare two leaves side by side
       g / p                 #   graft a subtree elsewhere / prune a branch
-      e                     #   export the current branch as markdown
+      x                     #   export the tree as graphviz dot
     q                       # back to chat, on whichever branch you left
-    :q                      # quit; everything is already in sqlite
+    ctrl-c                  # quit; everything is already in sqlite
 
 ## what it is not
 
