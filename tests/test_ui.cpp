@@ -118,6 +118,23 @@ TEST_CASE("a pathological widget tree is capped, not fatal") {
 		wide += (i ? "," : "") + std::string("{\"type\":\"text\",\"text\":\"a\"}");
 	wide += "]}";
 	CHECK_NOTHROW(static_cast<void>(render(ui::render_widget(th, wide), 40, 8)));
+
+	// the bracket-in-string bypass: a string padded with ']' must not fool the
+	// depth guard into parsing (then dumping) a stack-overflowing nested array.
+	std::string bypass = "{\"type\":\"card\",\"p\":\"" + std::string(50000, ']') +
+	                     "\",\"d\":" + std::string(50000, '[') + std::string(50000, ']') + "}";
+	CHECK_NOTHROW(static_cast<void>(render(ui::render_widget(th, bypass), 40, 6)));
+
+	// a preset builder fed a huge array must cap, not build millions of elements.
+	std::string bigtable = "{\"type\":\"table\",\"rows\":[";
+	for (int i = 0; i < 20000; ++i) bigtable += (i ? "," : "") + std::string("[\"x\"]");
+	bigtable += "]}";
+	CHECK_NOTHROW(static_cast<void>(render(ui::render_widget(th, bigtable), 40, 8)));
+
+	std::string bigspark = "{\"type\":\"sparkline\",\"values\":[";
+	for (int i = 0; i < 20000; ++i) bigspark += (i ? "," : "") + std::string("1");
+	bigspark += "]}";
+	CHECK_NOTHROW(static_cast<void>(render(ui::render_widget(th, bigspark), 40, 3)));
 }
 
 TEST_CASE("image half-block node renders cells for a decoded bitmap") {

@@ -396,9 +396,12 @@ void app::impl::finish_stream(const result<completion>& out, const node_id& pare
 		return;
 	}
 
-	// a truncated turn can be resumed with /continue.
-	truncated = out && out->stop_reason == "max_tokens";
-	if (truncated) toast = "response truncated, /continue to resume";
+	// a turn cut short by the token cap or a paused server-tool loop resumes with
+	// /continue (the web search loop caps its iterations and returns pause_turn).
+	truncated = out && (out->stop_reason == "max_tokens" || out->stop_reason == "pause_turn");
+	if (truncated)
+		toast = out->stop_reason == "pause_turn" ? "search paused, /continue to resume"
+		                                         : "response truncated, /continue to resume";
 
 	// if the assistant asked for tools, resolve them and loop.
 	if (out) {

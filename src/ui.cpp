@@ -281,7 +281,10 @@ Element body_block(const theme& th, const std::string& body) {
 		const std::string ln =
 		    text_body.substr(start, nl == std::string::npos ? std::string::npos : nl - start);
 		if (ln.rfind("```", 0) == 0) {
-			const std::string lang = ln.substr(3);
+			std::string lang = ln.substr(3);  // trim so "```plume " / CRLF still match
+			while (!lang.empty() &&
+			       (lang.back() == ' ' || lang.back() == '\r' || lang.back() == '\t'))
+				lang.pop_back();
 			if (in_widget) {  // closing fence: render the accumulated directive
 				in_widget = false;
 				lines.push_back(render_widget(th, widget_src));
@@ -295,7 +298,7 @@ Element body_block(const theme& th, const std::string& body) {
 					                      bgcolor(col(th.p.pine))}));  // language badge
 			}
 		} else if (in_widget) {
-			widget_src += ln + "\n";
+			if (widget_src.size() < 64 * 1024) widget_src += ln + "\n";  // cap untrusted size
 		} else if (in_code) {
 			lines.push_back(hbox({text("  "), highlight_line(th, ln)}));
 		} else {
@@ -304,8 +307,10 @@ Element body_block(const theme& th, const std::string& body) {
 		if (nl == std::string::npos) break;
 		start = nl + 1;
 	}
-	if (in_widget)  // still streaming in: show a quiet placeholder
-		lines.push_back(text("  … building widget") | color(col(th.p.muted)) | dim);
+	// an unclosed widget fence (model forgot the close, or the turn is settled):
+	// render what we have rather than dropping it. render_widget degrades a partial
+	// or malformed directive to a labelled box, so this is safe mid-stream too.
+	if (in_widget) lines.push_back(render_widget(th, widget_src));
 	return vbox(std::move(lines));
 }
 

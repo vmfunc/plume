@@ -22,6 +22,7 @@ namespace {
 
 constexpr int kMaxDepth = 14;     // deepest primitive nesting we will render
 constexpr int kNodeBudget = 600;  // hard cap on total nodes per widget
+constexpr int kMaxItems = 256;    // cap on rows/bars/items/values a preset builds
 
 std::string as_str(const json& v) {
 	if (v.is_string()) return v.get<std::string>();
@@ -36,7 +37,11 @@ std::string as_str(const json& v) {
 		return s;
 	}
 	if (v.is_boolean()) return v.get<bool>() ? "true" : "false";
-	return v.is_null() ? "" : v.dump();
+	// never dump() an untrusted object/array here: the serializer recurses per
+	// level and a deep value would overflow the stack. show a placeholder instead.
+	if (v.is_object()) return "{…}";
+	if (v.is_array()) return "[…]";
+	return "";
 }
 
 std::string field(const json& j, const char* k) {
@@ -80,12 +85,14 @@ Element sparkline(const theme& th, const json& j) {
 	std::vector<double> vs;
 	double mn = 1e30, mx = -1e30;
 	if (j.contains("values") && j["values"].is_array())
-		for (const auto& v : j["values"])
+		for (const auto& v : j["values"]) {
+			if (static_cast<int>(vs.size()) >= kMaxItems) break;  // cap untrusted length
 			if (v.is_number()) {
 				vs.push_back(v.get<double>());
 				mn = std::min(mn, vs.back());
 				mx = std::max(mx, vs.back());
 			}
+		}
 	if (vs.empty()) return text("");
 	const double range = mx > mn ? mx - mn : 1.0;
 	std::string s;
@@ -117,11 +124,14 @@ Element weather_widget(const theme& th, const json& j) {
 	                 text(field(j, "condition")) | color(col(th.p.foam))};
 	if (j.contains("forecast") && j["forecast"].is_array()) {
 		Elements days;
-		for (const auto& d : j["forecast"])
+		int n = 0;
+		for (const auto& d : j["forecast"]) {
+			if (++n > kMaxItems) break;
 			days.push_back(
 			    vbox({text(field(d, "day")) | color(col(th.p.subtle)),
 			          text(field(d, "hi") + "/" + field(d, "lo")) | color(col(th.p.muted))}) |
 			    flex);
+		}
 		rows.push_back(separator() | color(col(th.p.hl_low)));
 		rows.push_back(hbox(std::move(days)));
 	}
@@ -132,19 +142,28 @@ Element table_widget(const theme& th, const json& j) {
 	Elements rows;
 	if (j.contains("columns") && j["columns"].is_array()) {
 		Elements hdr;
-		for (const auto& c : j["columns"])
+		int n = 0;
+		for (const auto& c : j["columns"]) {
+			if (++n > kMaxItems) break;
 			hdr.push_back(text(as_str(c) + "  ") | bold | color(col(th.p.iris)) | flex);
+		}
 		rows.push_back(hbox(std::move(hdr)));
 		rows.push_back(separator() | color(col(th.p.hl_med)));
 	}
-	if (j.contains("rows") && j["rows"].is_array())
+	if (j.contains("rows") && j["rows"].is_array()) {
+		int n = 0;
 		for (const auto& r : j["rows"]) {
+			if (++n > kMaxItems) break;
 			Elements cells;
+			int m = 0;
 			if (r.is_array())
-				for (const auto& c : r)
+				for (const auto& c : r) {
+					if (++m > kMaxItems) break;
 					cells.push_back(text(as_str(c) + "  ") | color(col(th.p.text)) | flex);
+				}
 			rows.push_back(hbox(std::move(cells)));
 		}
+	}
 	return frame(vbox(std::move(rows)), th.p.hl_med);
 }
 
@@ -154,11 +173,15 @@ Element card_widget(const theme& th, const json& j) {
 		rows.push_back(text(t) | bold | color(col(th.p.text)));
 		rows.push_back(separator() | color(col(th.p.hl_low)));
 	}
-	if (j.contains("fields") && j["fields"].is_object())
-		for (const auto& [k, v] : j["fields"].items())
+	if (j.contains("fields") && j["fields"].is_object()) {
+		int n = 0;
+		for (const auto& [k, v] : j["fields"].items()) {
+			if (++n > kMaxItems) break;
 			rows.push_back(hbox({text(k) | color(col(th.p.muted)) | size(WIDTH, EQUAL, 16),
 			                     text(as_str(v)) | color(col(th.p.foam))}));
-	if (rows.empty()) rows.push_back(paragraph(j.dump(2)) | color(col(th.p.subtle)));
+		}
+	}
+	if (rows.empty()) rows.push_back(text("(empty card)") | color(col(th.p.muted)) | dim);
 	return frame(vbox(std::move(rows)), th.p.iris);
 }
 
@@ -173,32 +196,43 @@ Element progress_widget(const theme& th, const json& j) {
 
 Element chart_widget(const theme& th, const json& j) {
 	double maxv = 0;
-	if (j.contains("bars"))
-		for (const auto& b : j["bars"]) maxv = std::max(maxv, num(b, "value", 0));
+	int seen = 0;
+	if (j.contains("bars") && j["bars"].is_array())
+		for (const auto& b : j["bars"]) {
+			if (++seen > kMaxItems) break;
+			maxv = std::max(maxv, num(b, "value", 0));
+		}
 	if (maxv <= 0) maxv = 1;
 	Elements rows;
 	if (const std::string l = field(j, "label"); !l.empty())
 		rows.push_back(text(l) | bold | color(col(th.p.text)));
-	if (j.contains("bars"))
-		for (const auto& b : j["bars"])
+	if (j.contains("bars") && j["bars"].is_array()) {
+		int n = 0;
+		for (const auto& b : j["bars"]) {
+			if (++n > kMaxItems) break;
 			rows.push_back(
 			    hbox({text(field(b, "label")) | color(col(th.p.subtle)) | size(WIDTH, EQUAL, 12),
 			          bar_of(th, num(b, "value", 0) / maxv, th.p.iris, 24),
 			          text(" " + as_str(b.value("value", json(0)))) | color(col(th.p.foam))}));
+		}
+	}
 	return frame(vbox(std::move(rows)), th.p.hl_med);
 }
 
 Element checklist_widget(const theme& th, const json& j) {
 	Elements rows;
 	if (j.contains("title")) rows.push_back(text(field(j, "title")) | bold | color(col(th.p.text)));
-	if (j.contains("items"))
+	if (j.contains("items") && j["items"].is_array()) {
+		int n = 0;
 		for (const auto& it : j["items"]) {
+			if (++n > kMaxItems) break;
 			const bool done = it.is_object() && it.value("done", false);
 			const std::string txt = it.is_string() ? it.get<std::string>() : field(it, "text");
 			rows.push_back(
 			    hbox({text(done ? " [x] " : " [ ] ") | color(col(done ? th.p.foam : th.p.muted)),
 			          text(txt) | color(col(done ? th.p.subtle : th.p.text))}));
 		}
+	}
 	return frame(vbox(std::move(rows)), th.p.hl_med);
 }
 
@@ -282,15 +316,28 @@ Element render_node(const theme& th, const json& j, int depth, int& budget) {
 
 Element render_widget(const theme& th, const std::string& src) {
 	// nlohmann's DOM parser recurses per nesting level, so guard the parser itself
-	// against absurdly deep untrusted input before handing it the string.
+	// against absurdly deep untrusted input. count only STRUCTURAL brackets: a
+	// string value full of ']' must not skew the depth (that was a real bypass).
 	int depth = 0, worst = 0;
+	bool in_str = false, esc = false;
 	for (const char c : src) {
-		if (c == '{' || c == '[')
+		if (in_str) {
+			if (esc)
+				esc = false;
+			else if (c == '\\')
+				esc = true;
+			else if (c == '"')
+				in_str = false;
+			continue;
+		}
+		if (c == '"')
+			in_str = true;
+		else if (c == '{' || c == '[')
 			worst = std::max(worst, ++depth);
 		else if (c == '}' || c == ']')
 			--depth;
 	}
-	const auto j = worst > 200 ? json(json::value_t::discarded) : json::parse(src, nullptr, false);
+	const auto j = worst > 120 ? json(json::value_t::discarded) : json::parse(src, nullptr, false);
 	if (j.is_discarded())
 		return frame(vbox({text(" widget ") | color(col(th.p.muted)) | dim,
 		                   paragraph(src) | color(col(th.p.subtle))}),

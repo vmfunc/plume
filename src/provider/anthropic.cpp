@@ -31,6 +31,12 @@ bool prefill_blocked(const std::string& id) {
 	       contains(id, "mythos");
 }
 
+// the dynamic-filtering web search tool ships on the same line that blocks
+// prefill (4.6+, sonnet-5, fable/mythos); older models take only the basic tool.
+const char* web_search_type(const std::string& id) {
+	return prefill_blocked(id) ? "web_search_20260209" : "web_search_20250305";
+}
+
 features infer_features(const std::string& id) {
 	features f;
 	f.prefill = !prefill_blocked(id);
@@ -219,7 +225,7 @@ class anthropic_provider final : public provider {
 		if (req.cache_prefix && !tools.empty())
 			tools.back()["cache_control"] = {{"type", "ephemeral"}};
 		if (req.web_search)
-			tools.push_back({{"type", "web_search_20260209"}, {"name", "web_search"}});
+			tools.push_back({{"type", web_search_type(p.model)}, {"name", "web_search"}});
 		if (!tools.empty()) body["tools"] = std::move(tools);
 
 		switch (p.thinking) {
