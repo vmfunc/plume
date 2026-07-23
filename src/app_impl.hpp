@@ -88,7 +88,7 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 28> kActions = {{
+constexpr std::array<action, 30> kActions = {{
     {"weave", "open the loom", false},
     {"autoweave", "toggle auto-fan <k>", true},
     {"models", "pick a model (ctrl-l)", false},
@@ -115,6 +115,8 @@ constexpr std::array<action, 28> kActions = {{
     {"settings", "preferences (click statusbar)", false},
     {"sidebar", "toggle the sidebar", false},
     {"cost", "token + spend dashboard", false},
+    {"inspect", "raw node + nerd stats", false},
+    {"mouse", "toggle mouse capture", false},
     {"help", "keybinding cheatsheet (f1)", false},
     {"quit", "leave plume", false},
 }};
@@ -333,6 +335,7 @@ struct app::impl {
 		cost,
 		roles,
 		snippets,
+		inspect,
 		tool_approve,
 	};
 	overlay ov = overlay::none;
@@ -451,6 +454,17 @@ struct app::impl {
 	}
 	Element snips_view();
 	bool handle_snips(const Event& e);
+
+	// phase-8 extras (defined in extras_ui.cpp): a right-click context menu, an
+	// /inspect nerd-stats overlay, mouse-capture toggle, and responsive collapse.
+	bool mouse_on = true;
+	bool ctx_open = false;
+	int ctx_x = 0, ctx_y = 0;
+	Box root_box_;         // the whole frame's box, reflected each render
+	int last_width = 200;  // derived from root_box_, for responsive collapse
+	void open_inspect() { ov = overlay::inspect; }
+	Element ctx_menu_view();
+	Element inspect_view();
 	void recover_convo_model() {
 		convo_model.clear();
 		for (auto it = transcript.rbegin(); it != transcript.rend(); ++it)

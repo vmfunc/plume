@@ -29,10 +29,27 @@ bool app::impl::handle_mouse(const Mouse& m) {
 		return true;
 	}
 
+	// right-click opens the context menu on a message.
+	if (m.button == Mouse::Right && m.motion == Mouse::Pressed) {
+		if (const hit_region* h = hit_test(m.x, m.y); h && h->kind == hit_kind::message) {
+			transcript_sel = h->index;
+			follow_tail = false;
+			ctx_open = true;
+			ctx_x = m.x;
+			ctx_y = m.y;
+		}
+		return true;
+	}
+
 	// only a left press acts; motion/hover/release are ignored for now.
 	if (m.button != Mouse::Left || m.motion != Mouse::Pressed) return true;
 
 	const hit_region* hit = hit_test(m.x, m.y);
+	if (ctx_open) {  // a click resolves the floating context menu
+		ctx_open = false;
+		if (hit && hit->kind == hit_kind::msg_action) message_action(static_cast<char>(hit->index));
+		return true;
+	}
 	if (!hit) {
 		if (ov != overlay::none) ov = overlay::none;  // click-away closes an overlay
 		return true;

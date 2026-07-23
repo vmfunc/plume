@@ -149,6 +149,8 @@ int app::run() {
 	// keyboard is routed by hand.
 	auto root = Renderer([&] {
 		s.regions_.clear();  // rebuild the mouse hit-test table for this frame
+		if (s.root_box_.x_max >= s.root_box_.x_min)
+			s.last_width = s.root_box_.x_max - s.root_box_.x_min + 1;
 		if (s.wiz.active) {
 			const bool dark = s.caps.background ? s.caps.dark : true;
 			return s.wiz.render(s.wiz.preview_theme(dark), now_ms());
@@ -161,14 +163,16 @@ int app::run() {
 		                   ? vbox({body | flex, s.slash_popup(), input})
 		                   : vbox({body | flex, input});
 		// the sidebar wraps the main column (header/statusbar span full width). the
-		// loom needs the room, so the sidebar steps aside while branches stream.
+		// loom needs the room and narrow terminals can't spare it, so the sidebar
+		// steps aside while branches stream or below ~76 columns (responsive).
 		Element mid = main;
-		if (s.sb != impl::sidebar_mode::hidden && !loom)
+		if (s.sb != impl::sidebar_mode::hidden && !loom && s.last_width >= 76)
 			mid = hbox({s.sidebar_view() | size(WIDTH, EQUAL, 30),
 			            separator() | color(col(s.th.p.hl_med)), main | flex});
 		Element view = vbox({s.header(), mid | flex, s.statusbar()});
 		if (s.ov != impl::overlay::none) view = dbox({view, s.overlay_view()});
-		return view;
+		if (s.ctx_open) view = dbox({view, s.ctx_menu_view()});
+		return view | reflect(s.root_box_);  // capture width for responsiveness
 	});
 
 	auto with_keys = CatchEvent(root, [&](const Event& e) {
@@ -186,6 +190,10 @@ int app::run() {
 		if (e.is_mouse()) {
 			Event ev = e;  // mouse() is non-const; the caught event is const
 			return s.handle_mouse(ev.mouse());
+		}
+		if (s.ctx_open) {  // any key dismisses the context menu
+			s.ctx_open = false;
+			if (e == Event::Escape) return true;
 		}
 		s.toast.clear();  // any keypress dismisses a transient note
 		// the compare view owns the keyboard until dismissed.

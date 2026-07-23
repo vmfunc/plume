@@ -136,6 +136,12 @@ void app::impl::run_command(const std::string& name, const std::string& arg) {
 		toggle_sidebar();
 	} else if (name == "cost") {
 		open_cost();
+	} else if (name == "inspect") {
+		open_inspect();
+	} else if (name == "mouse") {
+		mouse_on = !mouse_on;
+		screen.TrackMouse(mouse_on);
+		toast = mouse_on ? "mouse on" : "mouse off (terminal selection)";
 	} else if (name == "continue") {
 		continue_turn();
 	} else if (name == "attach") {
@@ -191,7 +197,7 @@ bool app::impl::handle_overlay(const Event& e) {
 		ov = overlay::none;
 		return true;
 	}
-	if (ov == overlay::cheatsheet || ov == overlay::cost) {
+	if (ov == overlay::cheatsheet || ov == overlay::cost || ov == overlay::inspect) {
 		ov = overlay::none;  // read-only overlays close on any key
 		return true;
 	}
