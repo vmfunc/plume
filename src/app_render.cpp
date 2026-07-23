@@ -262,6 +262,7 @@ Element app::impl::overlay_view() {
 	if (ov == overlay::roles) return roles_view();
 	if (ov == overlay::snippets) return snips_view();
 	if (ov == overlay::inspect) return inspect_view();
+	if (ov == overlay::picker) return picker_view();
 	if (ov == overlay::tool_approve && !tool_queue.empty()) {
 		const auto& pt = tool_queue.front();
 		const std::string extra =

@@ -465,6 +465,7 @@ struct app::impl {
 	void open_inspect() { ov = overlay::inspect; }
 	Element ctx_menu_view();
 	Element inspect_view();
+	Element picker_view();  // the ctrl-p switcher, with date groups + a preview
 	void recover_convo_model() {
 		convo_model.clear();
 		for (auto it = transcript.rbegin(); it != transcript.rend(); ++it)

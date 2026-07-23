@@ -52,4 +52,69 @@ Element app::impl::inspect_view() {
 	return ui::overlay(th, "inspect", vbox(std::move(rows)) | yframe | size(HEIGHT, LESS_THAN, 24));
 }
 
+Element app::impl::picker_view() {
+	std::vector<const conversation*> list;
+	for (const auto& c : picker_convos) {
+		const std::string t = c.title.empty() ? "(untitled)" : c.title;
+		if (ov_filter.empty() || fuzzy(ov_filter, t)) list.push_back(&c);
+	}
+	const std::int64_t now = now_ms();
+	auto group = [&](std::int64_t created) -> const char* {
+		const std::int64_t d = created <= 0 ? 999 : (now - created) / 86400000;
+		return d < 1 ? "today" : d < 2 ? "yesterday" : d < 7 ? "this week" : "earlier";
+	};
+
+	Elements rows = {
+	    hbox({text("› ") | color(col(th.p.iris)) | bold, text(ov_filter) | color(col(th.p.text)),
+	          text("▏") | color(col(th.p.iris))}),
+	    text("")};
+	if (list.empty()) rows.push_back(text("  no conversations") | color(col(th.p.muted)) | dim);
+	std::string cur;
+	for (int i = 0; i < static_cast<int>(list.size()); ++i) {
+		if (const std::string g = group(list[static_cast<std::size_t>(i)]->created_at); g != cur) {
+			rows.push_back(text("  " + g) | color(col(th.p.gold)) | dim);
+			cur = g;
+		}
+		const bool on = i == ov_sel;
+		std::string title = list[static_cast<std::size_t>(i)]->title;
+		if (title.empty()) title = "(untitled)";
+		Element row = hbox({text(on ? "  ▸ " : "    ") | color(col(on ? th.p.iris : th.p.muted)),
+		                    text(title) | color(col(on ? th.p.text : th.p.subtle)) | flex});
+		if (list[static_cast<std::size_t>(i)]->source != "local")
+			row = hbox({row, text("↪ ") | color(col(th.p.foam)) | dim});
+		if (on) row = row | bgcolor(col(th.p.hl_low));
+		rows.push_back(hot(std::move(row), hit_kind::overlay_row, i));
+	}
+	Element left = vbox(std::move(rows)) | yframe | flex;
+
+	Element right = text("");  // preview of the highlighted conversation
+	if (db && ov_sel >= 0 && ov_sel < static_cast<int>(list.size())) {
+		const conversation* c = list[static_cast<std::size_t>(ov_sel)];
+		int turns = 0;
+		std::string model;
+		if (auto ns = db->nodes_of(c->id)) {
+			turns = static_cast<int>(ns->size());
+			for (auto it = ns->rbegin(); it != ns->rend(); ++it)
+				if (it->role == role::assistant && !it->model.empty()) {
+					model = it->model;
+					break;
+				}
+		}
+		std::string tags;
+		if (auto tg = db->tags_of(c->id))
+			for (const auto& t : *tg) tags += (tags.empty() ? "" : ", ") + t;
+		Elements pv = {
+		    text(c->title.empty() ? "(untitled)" : c->title) | bold | color(col(th.p.text)),
+		    text(""), text("turns  " + std::to_string(turns)) | color(col(th.p.foam)),
+		    text("model  " + (model.empty() ? "-" : model)) | color(col(th.p.foam)),
+		    text("source " + c->source) | color(col(th.p.subtle))};
+		if (!tags.empty()) pv.push_back(text("tags   " + tags) | color(col(th.p.rose)));
+		right = vbox(std::move(pv));
+	}
+	return ui::overlay(
+	    th, "conversations",
+	    hbox({left | size(WIDTH, EQUAL, 34), separator() | color(col(th.p.hl_med)), right | flex}) |
+	        size(HEIGHT, LESS_THAN, 22));
+}
+
 }  // namespace plume
