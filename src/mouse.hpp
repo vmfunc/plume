@@ -24,6 +24,7 @@ enum class hit_kind : std::uint8_t {
 	msg_action,       // a token in the selected message's action bar (index = char)
 	jump_latest,      // the "jump to latest" chip
 	retry,            // the "retry" chip after an error
+	tab,              // a conversation tab (index = tabs order)
 };
 
 struct hit_region {

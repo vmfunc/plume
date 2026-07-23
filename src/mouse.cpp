@@ -100,6 +100,10 @@ bool app::impl::handle_mouse(const Mouse& m) {
 		case hit_kind::msg_action: message_action(static_cast<char>(hit->index)); return true;
 		case hit_kind::jump_latest: scroll_tail(); return true;
 		case hit_kind::retry: retry_last(); return true;
+		case hit_kind::tab:
+			if (hit->index >= 0 && hit->index < static_cast<int>(tabs.size()))
+				switch_convo(tabs[static_cast<std::size_t>(hit->index)]);
+			return true;
 		default: return true;
 	}
 }

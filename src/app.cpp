@@ -42,7 +42,8 @@ result<app> app::create(config cfg) {
 	}
 	s.reload_transcript();
 	s.recover_convo_model();  // reflect the thread's last model in the pill
-	if (s.cfg.ui.sidebar) {   // open (visible, unfocused) so you can still type
+	s.touch_tab(s.convo);
+	if (s.cfg.ui.sidebar) {  // open (visible, unfocused) so you can still type
 		s.sb = impl::sidebar_mode::open;
 		s.refresh_sidebar();
 	}
@@ -158,6 +159,8 @@ int app::run() {
 		if (s.comparing) return vbox({s.header(), s.compare_view() | flex, s.statusbar()});
 		const bool loom = s.spawning || s.spawn_done;
 		Element body = loom ? s.spawn_view() : (s.in_weave ? s.weave_view() : s.transcript_view());
+		if (s.tabs.size() >= 2 && !loom)  // a browser-style tab strip above the body
+			body = vbox({s.tabs_strip(), separator() | color(col(s.th.p.hl_low)), body | flex});
 		Element input = (s.in_weave || loom) ? hbox({filler()}) : s.comp.render(s.th);
 		Element main = (!s.in_weave && !loom && !s.slash_matches().empty())
 		                   ? vbox({body | flex, s.slash_popup(), input})
@@ -281,6 +284,10 @@ int app::run() {
 		// transcript scrollback: in normal mode with an empty composer, motion keys
 		// walk the message cursor rather than typing. G/End re-pin the live tail.
 		if (!s.comp.insert_mode() && s.comp.value().empty()) {
+			if (s.pending_g && e == Event::Character("t"))
+				return s.pending_g = false, s.cycle_tab(1), true;
+			if (s.pending_g && e == Event::Character("T"))
+				return s.pending_g = false, s.cycle_tab(-1), true;
 			if (e == Event::Character("g")) {
 				if (s.pending_g) {
 					s.scroll_top();

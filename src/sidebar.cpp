@@ -1,6 +1,8 @@
 // the conversation sidebar: a closable pane listing threads with an active
 // marker, source badge and relative time. keyboard-navigable when focused,
 // click-to-switch always. out-of-line members of app::impl.
+#include <algorithm>
+
 #include "app_impl.hpp"
 
 namespace plume {
@@ -133,6 +135,7 @@ bool app::impl::handle_sidebar(const Event& e) {
 		if (e == Event::Character("y") && db && sb_confirm_delete <= max) {
 			const convo_id gone = list[static_cast<std::size_t>(sb_confirm_delete)]->id;
 			static_cast<void>(db->delete_conversation(gone));
+			tabs.erase(std::remove(tabs.begin(), tabs.end(), gone), tabs.end());
 			refresh_sidebar();
 			if (gone == convo) {  // dropped the live thread; land on another
 				if (!sb_convos.empty())

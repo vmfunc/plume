@@ -380,6 +380,26 @@ struct app::impl {
 	Element sidebar_view();
 	bool handle_sidebar(const Event& e);
 
+	// conversation tabs: a browser-style MRU strip cycled with gt/gT. switching a
+	// tab is a plain switch_convo; per-tab background streaming is not modelled.
+	std::vector<convo_id> tabs;
+	bool pending_g_tab = false;  // saw 'g', waiting for t/T (or another g)
+	void touch_tab(const convo_id& id) {
+		if (std::find(tabs.begin(), tabs.end(), id) == tabs.end()) {
+			tabs.push_back(id);
+			if (tabs.size() > 6) tabs.erase(tabs.begin());
+		}
+	}
+	void cycle_tab(int dir) {
+		if (tabs.size() < 2) return;
+		int cur = 0;
+		for (int i = 0; i < static_cast<int>(tabs.size()); ++i)
+			if (tabs[static_cast<std::size_t>(i)] == convo) cur = i;
+		cur = (cur + dir + static_cast<int>(tabs.size())) % static_cast<int>(tabs.size());
+		switch_convo(tabs[static_cast<std::size_t>(cur)]);
+	}
+	Element tabs_strip();
+
 	// inline slash-command autocomplete: a dropdown above the composer while the
 	// line is a bare "/partial" with no argument yet.
 	int slash_sel = 0;
@@ -583,6 +603,7 @@ struct app::impl {
 		reload_transcript();
 		scroll_tail();
 		recover_convo_model();
+		touch_tab(convo);
 	}
 
 	void switch_convo(const convo_id& id) {
@@ -594,6 +615,7 @@ struct app::impl {
 		reload_transcript();
 		scroll_tail();
 		recover_convo_model();
+		touch_tab(convo);
 	}
 
 	void do_export(const std::string& fmt) {

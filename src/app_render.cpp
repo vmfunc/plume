@@ -163,6 +163,24 @@ Element app::impl::transcript_view() {
 	return view;
 }
 
+Element app::impl::tabs_strip() {
+	Elements cells;
+	for (int i = 0; i < static_cast<int>(tabs.size()); ++i) {
+		const convo_id id = tabs[static_cast<std::size_t>(i)];
+		std::string title = "…";
+		if (db)
+			if (auto c = db->conversation_of(id))
+				title = c->title.empty() ? "(untitled)" : c->title;
+		if (title.size() > 16) title = title.substr(0, 15) + "…";
+		const bool active = id == convo;
+		Element tab = text(" " + title + " ") | color(col(active ? th.p.base : th.p.subtle)) |
+		              bgcolor(col(active ? th.p.iris : th.p.overlay));
+		cells.push_back(hot(std::move(tab), hit_kind::tab, i));
+		cells.push_back(text(" "));
+	}
+	return hbox(std::move(cells)) | bgcolor(col(th.p.surface));
+}
+
 Element app::impl::slash_popup() {
 	const auto m = slash_matches();
 	if (m.empty()) return text("");
@@ -291,10 +309,12 @@ Element app::impl::overlay_view() {
 		                         row("ctrl-p", "conversation picker"),
 		                         row("ctrl-f", "search everything"),
 		                         row("ctrl-w", "open the loom"),
+		                         row("ctrl-t", "snippet library"),
 		                         row("ctrl-e", "composer to $EDITOR"),
-		                         row("f1", "this cheatsheet · /settings"),
+		                         row("f1", "keys · /settings · /cost · /inspect"),
 		                         row("j/k · G", "scroll history · jump to live"),
-		                         row("wheel", "scroll · click to select"),
+		                         row("gt / gT", "next / prev conversation tab"),
+		                         row("wheel", "scroll · click · right-click menu"),
 		                         row("/", "slash command (insert)"),
 		                         row("? ", "this cheatsheet (normal)"),
 		                         row("esc", "stop / close"),
