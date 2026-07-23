@@ -18,6 +18,7 @@ struct ui_config {
 	bool reduce_motion = false;
 	std::string density = "cozy";  // cozy | compact
 	bool zen = false;              // hide all chrome
+	bool sidebar = true;           // show the conversation sidebar on start
 };
 
 struct keys_config {

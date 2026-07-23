@@ -121,6 +121,10 @@ void app::impl::run_command(const std::string& name, const std::string& arg) {
 		persist_config();
 	} else if (name == "help") {
 		ov = overlay::cheatsheet;
+	} else if (name == "settings") {
+		open_settings();
+	} else if (name == "sidebar") {
+		toggle_sidebar();
 	} else if (name == "continue") {
 		continue_turn();
 	} else if (name == "attach") {
@@ -169,6 +173,7 @@ bool app::impl::handle_overlay(const Event& e) {
 		return true;  // swallow other keys while the prompt is up
 	}
 	if (ov == overlay::models) return handle_models(e);
+	if (ov == overlay::settings) return handle_settings(e);
 	if (e == Event::Escape) {
 		ov = overlay::none;
 		return true;

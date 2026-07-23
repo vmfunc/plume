@@ -42,6 +42,10 @@ result<app> app::create(config cfg) {
 	}
 	s.reload_transcript();
 	s.recover_convo_model();  // reflect the thread's last model in the pill
+	if (s.cfg.ui.sidebar) {   // open (visible, unfocused) so you can still type
+		s.sb = impl::sidebar_mode::open;
+		s.refresh_sidebar();
+	}
 
 	// build the provider if one is configured and reachable.
 	if (std::getenv("PLUME_MOCK")) {
@@ -218,6 +222,10 @@ int app::run() {
 		}
 		if (e == Event::CtrlB) {  // toggle the conversation sidebar
 			s.toggle_sidebar();
+			return true;
+		}
+		if (e == Event::F1) {  // help, from any mode
+			s.ov = impl::overlay::cheatsheet;
 			return true;
 		}
 		// a focused sidebar owns the keyboard (open-but-unfocused lets you type).

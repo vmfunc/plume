@@ -19,6 +19,8 @@ enum class hit_kind : std::uint8_t {
 	statusbar_model,  // the model pill in the status bar
 	sidebar_row,      // a conversation row (index = sidebar list index)
 	sidebar_toggle,   // the collapse/expand handle
+	help,             // the "? keys" hint in the status bar
+	settings,         // the "settings" hint in the status bar
 };
 
 struct hit_region {

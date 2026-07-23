@@ -88,7 +88,7 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 22> kActions = {{
+constexpr std::array<action, 24> kActions = {{
     {"weave", "open the loom", false},
     {"autoweave", "toggle auto-fan <k>", true},
     {"models", "pick a model (ctrl-l)", false},
@@ -109,7 +109,9 @@ constexpr std::array<action, 22> kActions = {{
     {"export", "export convo <md|json|html>", true},
     {"density", "toggle cozy / compact", false},
     {"motion", "toggle animations", false},
-    {"help", "keybinding cheatsheet", false},
+    {"settings", "preferences (click statusbar)", false},
+    {"sidebar", "toggle the sidebar", false},
+    {"help", "keybinding cheatsheet (f1)", false},
     {"quit", "leave plume", false},
 }};
 
@@ -272,6 +274,7 @@ struct app::impl {
 		picker,
 		search,
 		models,
+		settings,
 		tool_approve,
 	};
 	overlay ov = overlay::none;
@@ -315,6 +318,17 @@ struct app::impl {
 	std::vector<const conversation*> sidebar_list() const;
 	Element sidebar_view();
 	bool handle_sidebar(const Event& e);
+
+	// the settings overlay (defined in settings_ui.cpp): a live-editing list of
+	// preferences that persist immediately.
+	int settings_sel = 0;
+	void open_settings() {
+		ov = overlay::settings;
+		settings_sel = 0;
+	}
+	Element settings_view();
+	bool handle_settings(const Event& e);
+	void cycle_theme(int dir);
 	void recover_convo_model() {
 		convo_model.clear();
 		for (auto it = transcript.rbegin(); it != transcript.rend(); ++it)

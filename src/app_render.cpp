@@ -54,6 +54,8 @@ Element app::impl::statusbar() {
 	if (!toast.empty()) line.push_back(text(toast + " ") | color(col(th.p.foam)));
 	if (streaming || compacting.load())
 		line.push_back(text(ui::spinner(now_ms()) + " streaming ") | color(col(th.p.rose)));
+	line.push_back(hot(text(" ? keys ") | color(col(th.p.subtle)), hit_kind::help));
+	line.push_back(hot(text(" settings ") | color(col(th.p.subtle)), hit_kind::settings));
 	line.push_back(text(in_weave ? " weave " : " chat ") | color(col(th.p.subtle)) |
 	               bgcolor(col(th.p.overlay)));
 	return hbox(std::move(line)) | bgcolor(col(th.p.surface));
@@ -185,6 +187,7 @@ Element app::impl::spawn_view() {
 
 Element app::impl::overlay_view() {
 	if (ov == overlay::models) return models_view();
+	if (ov == overlay::settings) return settings_view();
 	if (ov == overlay::tool_approve && !tool_queue.empty()) {
 		const auto& pt = tool_queue.front();
 		const std::string extra =
@@ -214,6 +217,7 @@ Element app::impl::overlay_view() {
 		                         row("ctrl-f", "search everything"),
 		                         row("ctrl-w", "open the loom"),
 		                         row("ctrl-e", "composer to $EDITOR"),
+		                         row("f1", "this cheatsheet · /settings"),
 		                         row("j/k · G", "scroll history · jump to live"),
 		                         row("wheel", "scroll · click to select"),
 		                         row("/", "slash command (insert)"),

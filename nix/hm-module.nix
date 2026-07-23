@@ -127,6 +127,12 @@ in
       description = "hide all chrome.";
     };
 
+    sidebar = mkOption {
+      type = types.bool;
+      default = true;
+      description = "show the conversation sidebar on start.";
+    };
+
     keybindings = mkOption {
       type = types.enum [ "vim" "emacs" ];
       default = "vim";
@@ -270,6 +276,7 @@ in
                 density = cfg.density;
                 reduce_motion = cfg.reduceMotion;
                 zen = cfg.zen;
+                sidebar = cfg.sidebar;
               };
               keys = pruneNull {
                 preset = cfg.keybindings;

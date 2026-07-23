@@ -55,9 +55,16 @@ bool app::impl::handle_mouse(const Mouse& m) {
 			if (dbl) handle_weave(Event::Return);  // double-click adopts
 			return true;
 		case hit_kind::overlay_row:
-			ov_sel = hit->index;
-			handle_overlay(Event::Return);  // activate the row
+			if (ov == overlay::settings) {
+				settings_sel = hit->index;
+				handle_settings(Event::Return);  // click a setting to cycle it
+			} else {
+				ov_sel = hit->index;
+				handle_overlay(Event::Return);  // activate the row
+			}
 			return true;
+		case hit_kind::help: ov = overlay::cheatsheet; return true;
+		case hit_kind::settings: open_settings(); return true;
 		case hit_kind::statusbar_model:
 			open_models();  // click the model pill to pick one
 			return true;
