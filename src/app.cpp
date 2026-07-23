@@ -50,7 +50,8 @@ result<app> app::create(config cfg) {
 	} else if (const provider_entry* pe = s.cfg.active_provider()) {
 		if (auto p = make_provider(pc_from(*pe))) s.prov = std::move(*p);
 	} else if (const char* key = std::getenv("ANTHROPIC_API_KEY"); key && *key) {
-		// zero-config: an env key drops you straight into a working chat.
+		// zero-config: an env key gives a working provider. on a first run the
+		// wizard still shows (below) and can adopt it; after that this is chat.
 		provider_config pc;
 		pc.kind = "anthropic";
 		pc.credential.kind = auth::source::env;
@@ -115,8 +116,13 @@ result<app> app::create(config cfg) {
 		}
 	}
 
-	// nothing configured (and no env key), or a forced `plume setup`: run the wizard.
-	if ((!s.prov && !std::getenv("PLUME_MOCK")) || std::getenv("PLUME_WIZARD"))
+	// show the wizard on a forced `plume setup`, or (outside mock mode) whenever
+	// nothing is configured or this is a first run. a first run is the absence of
+	// a config file: §231 wants first launch to land in the wizard even when an
+	// env key could otherwise auto-configure a provider behind your back.
+	const bool first_run = !std::filesystem::exists(s.cfg.config_dir + "/config.toml");
+	if (std::getenv("PLUME_WIZARD") ||
+	    (!std::getenv("PLUME_MOCK") && (!s.prov || first_run)))
 		s.wiz.begin(s.cfg, s.caps, now_ms());
 
 	return a;
