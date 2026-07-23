@@ -148,8 +148,8 @@ Element caps_body(const theme& th, const term::capabilities& caps, std::int64_t 
 		out.push_back(hbox({text("  background  ") | C(th.p.muted),
 		                    text(bg) | C(caps.dark ? th.p.iris : th.p.gold)}));
 	}
-	// a themed inline image, drawn as half-blocks so it lands in any terminal.
-	Element splash = ui::image_halfblock(ui::splash_bitmap(48, 20, th), 44, 9) | hcenter;
+	// a themed inline aurora, drawn as half-blocks so it lands in any terminal.
+	Element splash = ui::image_halfblock(ui::splash_bitmap(120, 28, th), 46, 5) | hcenter;
 	return vbox({splash, text(""), vbox(std::move(out))});
 }
 

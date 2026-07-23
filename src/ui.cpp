@@ -47,17 +47,17 @@ img::bitmap splash_bitmap(int w, int h, const theme& th) {
 	bm.width = w;
 	bm.height = h;
 	bm.rgba.resize(static_cast<std::size_t>(w) * h * 4);
-	// a bilinear wash across four corners, plus a soft central shaft to suggest
-	// a quill down the middle.
+	// a calm rosé pine aurora: a smooth love -> rose -> iris -> foam -> pine band
+	// across the width, brightest through the middle and easing into the base at
+	// the top and bottom edges, with a faint diagonal drift. no hard seams.
+	const std::vector<rgb> band = {th.p.love, th.p.rose, th.p.iris, th.p.foam, th.p.pine};
 	for (int y = 0; y < h; ++y) {
-		const float fy = h > 1 ? static_cast<float>(y) / (h - 1) : 0.0f;
+		const float fy = h > 1 ? static_cast<float>(y) / (h - 1) : 0.5f;
+		const float env = 0.30f + 0.70f * std::sin(fy * 3.14159265f);  // edge -> middle -> edge
 		for (int x = 0; x < w; ++x) {
 			const float fx = w > 1 ? static_cast<float>(x) / (w - 1) : 0.0f;
-			const rgb top = lerp(th.p.overlay, th.p.iris, fx);
-			const rgb bot = lerp(th.p.surface, th.p.foam, fx);
-			rgb c = lerp(top, bot, fy);
-			const float shaft = std::exp(-std::pow((fx - 0.5f) * 7.0f, 2.0f));
-			c = lerp(c, lerp(th.p.gold, th.p.love, fy), shaft * 0.5f * (1.0f - fy * 0.4f));
+			const float t = std::clamp(fx + (fy - 0.5f) * 0.18f, 0.0f, 1.0f);
+			const rgb c = lerp(th.p.base, lerp(band, t), env);
 			auto* p = &bm.rgba[(static_cast<std::size_t>(y) * w + x) * 4];
 			p[0] = c.r;
 			p[1] = c.g;
