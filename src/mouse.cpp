@@ -75,6 +75,9 @@ bool app::impl::handle_mouse(const Mouse& m) {
 			if (ov == overlay::none && !slash_matches().empty()) {
 				slash_sel = hit->index;  // click a slash suggestion
 				accept_slash();
+			} else if (ov == overlay::artifacts) {
+				art_sel = hit->index;  // click an artifact to view it
+				art_view = hit->index;
 			} else if (ov == overlay::settings) {
 				settings_sel = hit->index;
 				handle_settings(Event::Return);  // click a setting to cycle it

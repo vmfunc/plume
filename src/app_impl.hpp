@@ -88,7 +88,7 @@ struct action {
 };
 
 // the command set, shared by the palette and slash commands.
-constexpr std::array<action, 32> kActions = {{
+constexpr std::array<action, 33> kActions = {{
     {"weave", "open the loom", false},
     {"autoweave", "toggle auto-fan <k>", true},
     {"models", "pick a model (ctrl-l)", false},
@@ -117,6 +117,7 @@ constexpr std::array<action, 32> kActions = {{
     {"plan", "toggle plan-first mode", false},
     {"websearch", "toggle web search (anthropic)", false},
     {"cost", "token + spend dashboard", false},
+    {"artifacts", "code / doc blocks (copy, save)", false},
     {"inspect", "raw node + nerd stats", false},
     {"mouse", "toggle mouse capture", false},
     {"help", "keybinding cheatsheet (f1)", false},
@@ -338,6 +339,7 @@ struct app::impl {
 		roles,
 		snippets,
 		inspect,
+		artifacts,
 		tool_approve,
 	};
 	overlay ov = overlay::none;
@@ -488,6 +490,22 @@ struct app::impl {
 	Element ctx_menu_view();
 	Element inspect_view();
 	Element picker_view();  // the ctrl-p switcher, with date groups + a preview
+
+	// artifacts (defined in artifacts.cpp): the conversation's code/document blocks
+	// gathered into a drawer you can view, copy, or save to a file.
+	struct artifact {
+		std::string lang, content;
+	};
+	int art_sel = 0;
+	int art_view = -1;  // -1 = list, else the index being viewed
+	std::vector<artifact> collect_artifacts() const;
+	void open_artifacts() {
+		ov = overlay::artifacts;
+		art_sel = 0;
+		art_view = -1;
+	}
+	Element artifacts_view();
+	bool handle_artifacts(const Event& e);
 	void recover_convo_model() {
 		convo_model.clear();
 		for (auto it = transcript.rbegin(); it != transcript.rend(); ++it)

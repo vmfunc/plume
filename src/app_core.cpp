@@ -144,6 +144,8 @@ void app::impl::run_command(const std::string& name, const std::string& arg) {
 		toast = web_on ? "web search on" : "web search off";
 	} else if (name == "inspect") {
 		open_inspect();
+	} else if (name == "artifacts") {
+		open_artifacts();
 	} else if (name == "mouse") {
 		mouse_on = !mouse_on;
 		screen.TrackMouse(mouse_on);
@@ -199,6 +201,7 @@ bool app::impl::handle_overlay(const Event& e) {
 	if (ov == overlay::settings) return handle_settings(e);
 	if (ov == overlay::roles) return handle_roles(e);
 	if (ov == overlay::snippets) return handle_snips(e);
+	if (ov == overlay::artifacts) return handle_artifacts(e);
 	if (e == Event::Escape) {
 		ov = overlay::none;
 		return true;
