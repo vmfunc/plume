@@ -166,6 +166,31 @@ struct app::impl {
 	convo_id convo;
 	std::vector<node> transcript;
 
+	// transcript scrollback: a message cursor over `transcript`. follow_tail keeps
+	// the newest turn in view; scrolling up pins a message and drops the tail.
+	int transcript_sel = -1;
+	bool follow_tail = true;
+	bool pending_g = false;  // first 'g' of a gg (jump to top)
+
+	// step the message cursor by delta turns; reaching the last turn re-pins tail.
+	void scroll_transcript(int delta) {
+		const int last = static_cast<int>(transcript.size()) - 1;
+		if (last < 0) return;
+		int cur = follow_tail ? last : transcript_sel;
+		cur = std::clamp(cur + delta, 0, last);
+		transcript_sel = cur;
+		follow_tail = (cur == last);
+	}
+	void scroll_top() {
+		if (transcript.empty()) return;
+		transcript_sel = 0;
+		follow_tail = false;
+	}
+	void scroll_tail() {
+		transcript_sel = -1;
+		follow_tail = true;
+	}
+
 	// streaming state, touched from the ui thread only (workers marshal via Post).
 	std::atomic<bool> streaming{false};
 	std::atomic<bool> stop_flag{false};

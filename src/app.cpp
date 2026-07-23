@@ -121,8 +121,7 @@ result<app> app::create(config cfg) {
 	// a config file: §231 wants first launch to land in the wizard even when an
 	// env key could otherwise auto-configure a provider behind your back.
 	const bool first_run = !std::filesystem::exists(s.cfg.config_dir + "/config.toml");
-	if (std::getenv("PLUME_WIZARD") ||
-	    (!std::getenv("PLUME_MOCK") && (!s.prov || first_run)))
+	if (std::getenv("PLUME_WIZARD") || (!std::getenv("PLUME_MOCK") && (!s.prov || first_run)))
 		s.wiz.begin(s.cfg, s.caps, now_ms());
 
 	return a;
@@ -232,6 +231,31 @@ int app::run() {
 		if (!s.comp.insert_mode() && e == Event::Character("?")) {
 			s.ov = impl::overlay::cheatsheet;
 			return true;
+		}
+		// transcript scrollback: in normal mode with an empty composer, motion keys
+		// walk the message cursor rather than typing. G/End re-pin the live tail.
+		if (!s.comp.insert_mode() && s.comp.value().empty()) {
+			if (e == Event::Character("g")) {
+				if (s.pending_g) {
+					s.scroll_top();
+					s.pending_g = false;
+				} else {
+					s.pending_g = true;
+				}
+				return true;
+			}
+			s.pending_g = false;
+			if (e == Event::Character("k") || e == Event::ArrowUp)
+				return s.scroll_transcript(-1), true;
+			if (e == Event::Character("j") || e == Event::ArrowDown)
+				return s.scroll_transcript(1), true;
+			if (e == Event::PageUp || e.input() == std::string(1, 0x15))  // ctrl-u
+				return s.scroll_transcript(-4), true;
+			if (e == Event::PageDown || e.input() == std::string(1, 0x04))  // ctrl-d
+				return s.scroll_transcript(4), true;
+			if (e == Event::Character("G") || e == Event::End) return s.scroll_tail(), true;
+			if (e == Event::Home) return s.scroll_top(), true;
+			if (e == Event::Escape && !s.follow_tail) return s.scroll_tail(), true;
 		}
 		// chat: the modal composer handles every key.
 		switch (s.comp.handle(e)) {

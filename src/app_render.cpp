@@ -62,6 +62,10 @@ Element app::impl::statusbar() {
 Element app::impl::transcript_view() {
 	Elements out;
 	const bool cmp = compact();
+	const bool cursor_on =
+	    !follow_tail && transcript_sel >= 0 && transcript_sel < static_cast<int>(transcript.size());
+	int focus_at = -1;  // index into `out` to scroll to
+	int idx = 0;
 	for (const auto& n : transcript) {
 		auto blocks = codec::decode_blocks(n.content_json);
 		std::string body;
@@ -79,11 +83,17 @@ Element app::impl::transcript_view() {
 		} else {
 			body = n.content_json;
 		}
-		out.push_back(
-		    ui::message_card(th, n.role, body, thinks, show_think, cmp, n.model, n.tokens_out));
+		Element card =
+		    ui::message_card(th, n.role, body, thinks, show_think, cmp, n.model, n.tokens_out);
+		if (cursor_on && idx == transcript_sel) {
+			card = card | bgcolor(col(th.p.hl_low));  // the selected turn
+			focus_at = static_cast<int>(out.size());
+		}
+		out.push_back(std::move(card));
 		for (const auto& path : images)
 			if (const img::bitmap* bm = preview(path))
 				out.push_back(hbox({text("  "), ui::image_halfblock(*bm, 44, 14)}));
+		++idx;
 	}
 	if (streaming || !live_text.empty() || !live_think.empty())
 		out.push_back(ui::streaming_card(th, live_text, live_think, show_think, cmp, now_ms(),
@@ -94,8 +104,11 @@ Element app::impl::transcript_view() {
 		     text("type below to begin · ctrl-w to weave") | color(col(th.p.muted)) | dim | center,
 		     filler()}));
 	if (!status_error.empty()) out.push_back(text("  " + status_error) | color(col(th.p.love)));
-	out.back() = out.back() | focus;  // keep the newest turn in view
-	return vbox(std::move(out)) | yframe | flex;
+	if (focus_at >= 0)
+		out[static_cast<std::size_t>(focus_at)] = out[static_cast<std::size_t>(focus_at)] | focus;
+	else
+		out.back() = out.back() | focus;  // follow the tail
+	return vbox(std::move(out)) | yframe | vscroll_indicator | flex;
 }
 
 Element app::impl::weave_view() {
