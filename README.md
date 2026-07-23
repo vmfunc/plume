@@ -1,6 +1,6 @@
 # plume
 
-plume — a quill for terminals. talk to models, weave the branches, keep your history in sqlite where it belongs. no electron, no telemetry, no cloud between you and the api.
+plume is a quill for terminals. talk to models, weave the branches, keep your history in sqlite where it belongs. no electron, no telemetry, no cloud between you and the api.
 
 a c++ tui client for language models. every conversation is a tree, not a scroll: branch a reply, walk the siblings, graft a subtree where it fits better, prune what didn't work. images render inline for real: kitty graphics where the terminal has them, a chafa half-block fallback everywhere else. storage is one sqlite file you can back up, grep, or query. plugins are lua. it speaks to anthropic and anything openai-compatible, and it can import your claude.ai history so nothing gets left behind.
 
@@ -75,6 +75,3 @@ setup`; `plume doctor` checks config, storage, terminal and provider health.
     q                       # back to chat, on whichever branch you left
     ctrl-c                  # quit; everything is already in sqlite
 
-## what it is not
-
-not an electron app, it is a terminal program that starts in milliseconds. not a telemetry endpoint, nothing phones home, ever. your keys go straight to the api and your history never leaves the database file.
